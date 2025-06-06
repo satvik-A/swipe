@@ -6,7 +6,7 @@ class GroqLLM(LLM):
     model: str = "llama3-8b-8192"
 
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
-        return query_groq(prompt, self.model)
+        return query_groq([{"role": "user", "content": prompt}], self.model)
 
     @property
     def _llm_type(self) -> str:
