@@ -44,17 +44,47 @@ def ask_and_respond(question, prev_q=None, prev_a=None):
 
     return question, answer
 
-def collect_gift_info():
-    questions = [
-        "1. Tell me a bit about your relationship with the person you're gifting—are they a close friend, partner, sibling, or someone else?",
-        "2. What's the special occasion or reason behind this gift—birthday, anniversary, celebration, or just a surprise?",
-        "3. If you had to describe their vibe or personality in a few words—like adventurous, calm, creative, or foodie—what would you say?",
-        "4. What’s the general budget you’re planning to spend on this experience gift?",
-        "5. Is there a specific city or region you’d like the experience to take place in, or should it be something flexible or online?"
+import random
+
+# Multiple variations for each question to add randomness and freshness
+questions_alternatives = [
+    [
+        "Tell me a bit about your relationship with the person you're gifting—are they a close friend, partner, sibling, or someone else?",
+        "How would you describe your connection with the person you’re planning to surprise?",
+        "Who is the gift for, and what kind of bond do you share—friendship, family, love, or something else?",
+        "What’s your relationship with this person—are they someone you see daily or reconnect with on special occasions?"
+    ],
+    [
+        "What's the special occasion or reason behind this gift—birthday, anniversary, celebration, or just a surprise?",
+        "What’s the occasion for this gift—something planned or a spontaneous surprise?",
+        "Is this gift for a birthday, milestone, or just a ‘thinking of you’ kind of moment?",
+        "Are you celebrating anything specific with this gift, or is it just to brighten their day?"
+    ],
+    [
+        "If you had to describe their vibe or personality in a few words—like adventurous, calm, creative, or foodie—what would you say?",
+        "What kind of energy or personality does the recipient bring—are they outgoing, introverted, artistic, or a thrill-seeker?",
+        "How would you sum up their style or interests? Outdoorsy, luxury-loving, chill, high-energy?",
+        "Give me a quick sense of their personality—what makes them light up?"
+    ],
+    [
+        "What’s the general budget you’re planning to spend on this experience gift?",
+        "Roughly how much would you like to spend on this experience?",
+        "Do you have a price range in mind for this gift?",
+        "Are you going for something small and sweet, or are you open to something more premium?"
+    ],
+    [
+        "Is there a specific city or region you’d like the experience to take place in, or should it be something flexible or online?",
+        "Where should this experience happen? In a specific city or should it be open to anywhere—or even virtual?",
+        "Do you have a location in mind for the experience, or would you prefer something flexible or remote?",
+        "Would you like the experience to be tied to a specific place, or is flexibility more important?"
     ]
+]
+
+def collect_gift_info():
     answers = []
     prev_q = prev_a = None
-    for q in questions:
+    for alternatives in questions_alternatives:
+        q = random.choice(alternatives)
         qa = ask_and_respond(q, prev_q, prev_a)
         answers.append(qa)
         prev_q, prev_a = qa
