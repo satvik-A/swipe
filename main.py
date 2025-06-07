@@ -1,56 +1,44 @@
 from tools import query_groq
 
-# user_prompt = input("enter your Q")
-# # user_prompt = "give me all the topics in dsa"  # place holder for input 
-# response = query_groq(user_prompt)
-# print("AI:", response)
+print("🎁 Welcome to Slash – Your AI Gifting Concierge!")
+print("Let's find the perfect experience gift for you. Answer a few short questions...\n")
 
-print("Let's find the perfect experience gift for you! Answer a few quick questions:")
+messages = [{
+    "role": "system",
+    "content": "You are an AI concierge helping users find the perfect experience gift from a database. Ask one gift-relevant question at a time based on previous answers. Keep it conversational, short, and focused on personalizing the recommendation."
+}]
 
-messages = []
 quiz_answers = {}
 
-questions = [
-    {"key": "relationship", "text": "Who are you gifting this experience to? (e.g., friend, partner, parent)"},
-    {"key": "occasion", "text": "What's the occasion? (e.g., birthday, anniversary, graduation)"},
-    {"key": "budget", "text": "What's your budget for this gift (in INR)?"},
-    {"key": "location", "text": "Where should the experience take place? (e.g., Delhi, Goa, Bangalore)"},
-]
+# Start the quiz
+initial_question = query_groq(messages)
+print("Q1:", initial_question)
+answer = input("> ")
+quiz_answers["q1"] = answer
+messages.append({"role": "user", "content": answer})
 
-for idx, q in enumerate(questions):
-    user_answer = input(f"{q['text']}\n> ")
-    quiz_answers[q["key"]] = user_answer
-    messages.append({"role": "user", "content": user_answer})
+# Ask 4 more dynamic questions
+for i in range(2, 6):
+    followup_question = query_groq(messages)
+    print(f"Q{i}:", followup_question)
+    user_reply = input("> ")
+    quiz_answers[f"q{i}"] = user_reply
+    messages.append({"role": "user", "content": user_reply})
 
-    # Custom follow-up after budget
-    if q["key"] == "budget":
-        try:
-            budget = int(user_answer)
-            if budget < 1000:
-                follow_up = "Got it — you're going for something budget-friendly! Prefer something chill or exciting?"
-            elif budget <= 3000:
-                follow_up = "Nice! Do you want something adventurous or relaxing?"
-            else:
-                follow_up = "Wow! Looking for something premium and luxurious?"
-            follow_up_ans = input(follow_up + "\n> ")
-            quiz_answers["vibe"] = follow_up_ans
-            messages.append({"role": "user", "content": follow_up_ans})
-        except ValueError:
-            pass
+print("\nThanks! Let me find the best experience gift for you...\n")
 
-print("\nThanks! Let me find the best experience gift for you...")
+# Final summarizing prompt to get recommendations
+final_prompt = f"""
+Based on the following answers:
+{quiz_answers}
 
-# Build prompt using quiz answers
-prompt = f"""
-Suggest 3 experience gifts for someone gifting to their {quiz_answers.get("relationship")}, for a {quiz_answers.get("occasion")}, located in {quiz_answers.get("location")}, with a budget of ₹{quiz_answers.get("budget")}, and the user prefers a vibe like "{quiz_answers.get("vibe", "surprise")}".
+Suggest 3 personalized experience gifts for the user using only what you know from the answers. Keep suggestions practical and relevant for a gifting platform in India.
 """
 
-messages.append({"role": "user", "content": prompt})
+messages.append({"role": "user", "content": final_prompt})
 
 try:
     response = query_groq(messages)
-    print("\n🎁 AI Recommendation:\n", response)
+    print("🎁 AI Recommendation:\n", response)
 except Exception as e:
     print("Error:", e)
-        
-        # this is the working version with continuous chat
