@@ -3,18 +3,39 @@ from tools import query_groq
 recipient_context = {}
 
 def ask_and_respond(question, prev_q=None, prev_a=None):
-    if prev_q and prev_a:
-        print(f"Got it — for '{prev_q}', you said: {prev_a}.")
-    answer = input(f"{question}\n> ")
+    # Build a one-paragraph natural question based on recipient context
+    context_summary = "\n".join([f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in recipient_context.items()])
+     
+    custom_prompt = (
+        "You are a warm and creative assistant helping someone choose a thoughtful experience gift. "
+        "You will rewrite the given question as a natural, engaging prompt for the user. "
+        "IMPORTANT: Do NOT answer the question, do NOT add any explanations, introductions, or phrases like "
+        "'Here's your rewritten prompt:' or 'That's a great question!'. "
+        "Return ONLY the rewritten question prompt, with 30–45 words (2–3 sentences), based on the context below. "
+        f"Original question: '{question}'\nContext:\n{context_summary}\n"
+        "Make it concise, friendly, and conversational."
+    )
+
+    try:
+        final_question = query_groq([{"role": "user", "content": custom_prompt}])
+    except Exception as e:
+        print("❌ AI Question Generation Error:", e)
+        final_question = question  # fallback
+
+    # Ask the generated paragraph-question
+    answer = input(f"{final_question}\n> ")
 
     # Store context
     key = question.split(".")[1].strip().lower().replace(" ", "_")
     recipient_context[key] = answer
 
-    # AI comment on the answer if needed
+    # Generate a follow-up conversational comment
     context_summary = "\n".join([f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in recipient_context.items()])
-    prompt = f"You are helping someone choose a gift experience. Here's what you know so far:\n{context_summary}\nRespond briefly and conversationally to their answer: '{answer}'"
-    messages = [{"role": "user", "content": prompt}]
+    response_prompt = (
+        f"You are helping someone choose a gift experience. Here's what you know so far:\n{context_summary}\n"
+        f"Respond briefly and conversationally to their answer: '{answer}'"
+    )
+    messages = [{"role": "user", "content": response_prompt}]
     try:
         ai_response = query_groq(messages)
         print(f"🤖 {ai_response}\n")
@@ -25,11 +46,11 @@ def ask_and_respond(question, prev_q=None, prev_a=None):
 
 def collect_gift_info():
     questions = [
-        "1. What is your relationship to the recipient?",
-        "2. What is the occasion for the gift?",
-        "3. What best describes them? (e.g. adventurous, calm, foodie, creative, etc.)",
-        "4. What is your budget for this occasion?",
-        "5. Where would you like the experience to take place (location)?"
+        "1. Tell me a bit about your relationship with the person you're gifting—are they a close friend, partner, sibling, or someone else?",
+        "2. What's the special occasion or reason behind this gift—birthday, anniversary, celebration, or just a surprise?",
+        "3. If you had to describe their vibe or personality in a few words—like adventurous, calm, creative, or foodie—what would you say?",
+        "4. What’s the general budget you’re planning to spend on this experience gift?",
+        "5. Is there a specific city or region you’d like the experience to take place in, or should it be something flexible or online?"
     ]
     answers = []
     prev_q = prev_a = None
