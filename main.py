@@ -1,5 +1,81 @@
 from tools import query_groq
 
+from tools import query_groq
+from dotenv import load_dotenv
+
+import os
+import csv
+import openai
+import uuid
+from qdrant_client import QdrantClient
+import nltk
+
+# openai.api_type = "azure"
+# openai.api_base = os.getenv("Azure_link")    # e.g., "https://YOUR-RESOURCE.openai.azure.com/"
+# openai.api_key = os.getenv("Azure_OpenAI")          # Your Azure OpenAI Key
+# openai.api_version = ""
+from openai import AzureOpenAI
+
+client = AzureOpenAI(
+    api_key=os.getenv("Azure_OpenAI"),
+    azure_endpoint=os.getenv("Azure_link"),
+    api_version="2023-05-15"  # or the version you have access to
+)
+
+def get_embedding(text):
+    response = client.embeddings.create(
+        input=[text],
+        model="embedding-model-name",  # e.g., "text-embedding-ada-002"
+        deployment_id="your-deployment-id"  # Azure deployment name
+    )
+    return response.data[0].embedding
+
+EMBEDDING_MODEL = "embed model name"  # Azure OpenAI embedding deployment
+# COMPLETION_MODEL = "ychat completion model name (response model)"       # Azure OpenAI completion deployment
+
+QDRANT_HOST = os.getenv("QDRANT-URL")  # e.g., "https://YOUR-QDRANT-URL
+QDRANT_API_KEY = os.getenv("QDRANT_API")
+COLLECTION = "rag_bot"
+
+client = QdrantClient(
+    url=QDRANT_HOST,
+    api_key=QDRANT_API_KEY
+)
+
+# def get_embedding(text):
+#     """Generate an embedding using Azure OpenAI."""
+#     response = openai.Embedding.create(
+#         input=[text],
+#         engine=EMBEDDING_MODEL
+#     )
+#     return response["data"][0]["embedding"]
+
+def create_collection():
+    """Create or recreate the Qdrant collection."""
+    client.recreate_collection(
+        collection_name=COLLECTION,
+        vectors_config=VectorParams(size=384, distance=Distance.COSINE)#COSINE is  a method of similarity search select size accroding to dim of embed model
+# cool  what is size
+    )
+    
+    def upload_vectors(index_data):
+        """Upload data to Qdrant."""
+    points = []
+    for item in index_data:
+        vector = get_embedding(item["chunk"])
+        points.append(PointStruct(id=item["id"], vector=vector, payload=item))
+    client.upsert(collection_name=COLLECTION, points=points)
+
+def get_top_chunks(query, k=5):
+    """Retrieve the most relevant chunks from Qdrant."""
+    query_vector = get_embedding(query)
+    results = client.search(
+        collection_name=COLLECTION,
+        query_vector=query_vector,
+        limit=k
+    )
+    return [hit.payload["chunk"] for hit in results]
+
 recipient_context = {}
 
 def ask_and_respond(question, prev_q=None, prev_a=None):
@@ -17,7 +93,7 @@ def ask_and_respond(question, prev_q=None, prev_a=None):
     )
 
     try:
-        final_question = query_groq([{"role": "user", "content": custom_prompt}])
+        final_question = query_groq([{"role": "user", "content": (custom_prompt)}])
     except Exception as e:
         print("❌ AI Question Generation Error:", e)
         final_question = question  # fallback
@@ -25,8 +101,10 @@ def ask_and_respond(question, prev_q=None, prev_a=None):
     # Ask the generated paragraph-question
     answer = input(f"{final_question}\n> ")
 
-    # Store context
-    key = question.split(".")[1].strip().lower().replace(" ", "_")
+  # Store context
+    import re
+    safe_q = re.sub(r'[^\w\s]', '', question).strip().lower()
+    key = '_'.join(safe_q.split())[:40]
     recipient_context[key] = answer
 
     # Generate a follow-up conversational comment

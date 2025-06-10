@@ -6,3 +6,5 @@ pydantic
 duckduckgo-search
 wikipedia
 openai
+qdrant-client
+nltk
