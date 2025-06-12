@@ -78,16 +78,19 @@ def get_top_chunks(query, k=5):
 
 recipient_context = {}
 
+# Stack to track question and answer history for backtracking
+question_stack = []
+
 def ask_and_respond(question, prev_q=None, prev_a=None):
     # Build a one-paragraph natural question based on recipient context
     context_summary = "\n".join([f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in recipient_context.items()])
      
     custom_prompt = (
         "You are a warm and creative assistant helping someone choose a thoughtful experience gift. "
-        "You will rewrite the given question as a natural, engaging prompt for the user. "
+        "You will rewrite the given question as a natural ,engaging prompt for the user and also respond warmly with 1 short sentence that shows understanding . "
         "IMPORTANT: Do NOT answer the question, do NOT add any explanations, introductions, or phrases like "
         "'Here's your rewritten prompt:' or 'That's a great question!'. "
-        "Return ONLY the rewritten question prompt, with 30–45 words (2–3 sentences), based on the context below. "
+        "Return ONLY the rewritten question prompt, with 40–60 words (2–3 sentences) in a single paragraph, based on the context below. "
         f"Original question: '{question}'\nContext:\n{context_summary}\n"
         "Make it concise, friendly, and conversational."
     )
@@ -101,26 +104,35 @@ def ask_and_respond(question, prev_q=None, prev_a=None):
     # Ask the generated paragraph-question
     answer = input(f"{final_question}\n> ")
 
-  # Store context
+    # Store context
     import re
     safe_q = re.sub(r'[^\w\s]', '', question).strip().lower()
     key = '_'.join(safe_q.split())[:40]
     recipient_context[key] = answer
+    question_stack.append((key, question, answer))
 
     # Generate a follow-up conversational comment
     context_summary = "\n".join([f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in recipient_context.items()])
-    response_prompt = (
-        f"You are helping someone choose a gift experience. Here's what you know so far:\n{context_summary}\n"
-        f"Respond briefly and conversationally to their answer: '{answer}'"
-    )
-    messages = [{"role": "user", "content": response_prompt}]
-    try:
-        ai_response = query_groq(messages)
-        print(f"🤖 {ai_response}\n")
-    except Exception as e:
-        print("❌ AI Error:", e)
+    # response_prompt = (
+    #     f"You are helping someone choose a gift experience. Here's what you know so far:\n{context_summary}\n"
+    #     f"Respond briefly and conversationally to their answer: '{answer}'"
+    # )
+    # messages = [{"role": "user", "content": response_prompt}]
+    # try:
+    #     ai_response = query_groq(messages)
+    #     print(f"🤖 {ai_response}\n")
+    # except Exception as e:
+    #     print("❌ AI Error:", e)
 
     return question, answer
+def go_back():
+    """Go back to the previous question by removing the last entry from recipient_context and question_stack."""
+    if not question_stack:
+        return {"error": "No previous question to go back to."}
+    key, question, answer = question_stack.pop()
+    if key in recipient_context:
+        del recipient_context[key]
+    return {"question": question, "answer": answer}
 
 import random
 
@@ -204,5 +216,8 @@ if __name__ == "__main__":
         print(suggestion)
     except Exception as e:
         print("❌ Error:", e)
+
+    # Example manual back call
+    # print("⬅️ Going back:", go_back())
 
     follow_up_chat()
