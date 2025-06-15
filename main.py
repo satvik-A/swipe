@@ -251,8 +251,6 @@ def follow_up_chat():
             print("❌ Error:", e)
 
 def run_this():
-    
-    print("📝 Let's start with some quick questions to get to know the recipient better.\n")
     collect_gift_info()
     
     
@@ -271,5 +269,4 @@ def run_this():
     follow_up_chat()
 
 if __name__ == "__main__":
-    print("🎁 Welcome to the Experience Gifting Assistant!\nI'll ask a few quick questions to help you find the perfect gift.\n")
     run_this()
