@@ -1,4 +1,5 @@
 from tools import query_groq
+from qdrant_client.models import VectorParams, Distance
 
 from tools import query_groq
 from dotenv import load_dotenv
@@ -50,36 +51,66 @@ client = QdrantClient(
 #     )
 #     return response["data"][0]["embedding"]
 
-def create_collection():
-    """Create or recreate the Qdrant collection."""
-    client.recreate_collection(
-        collection_name=COLLECTION,
-        vectors_config=VectorParams(size=384, distance=Distance.COSINE)#COSINE is  a method of similarity search select size accroding to dim of embed model
-# cool  what is size
-    )
+# def create_collection():
+#     """Create or recreate the Qdrant collection."""
+#     client.recreate_collection(
+#         collection_name=COLLECTION,
+#         vectors_config=VectorParams(size=384, distance=Distance.COSINE)#COSINE is  a method of similarity search select size accroding to dim of embed model
+# # cool  what is size
+#     )
     
-    def upload_vectors(index_data):
-        """Upload data to Qdrant."""
-    points = []
-    for item in index_data:
-        vector = get_embedding(item["chunk"])
-        points.append(PointStruct(id=item["id"], vector=vector, payload=item))
-    client.upsert(collection_name=COLLECTION, points=points)
+    # def upload_vectors(index_data):
+    #     """Upload data to Qdrant."""
+    # points = []
+    # for item in index_data:
+    #     vector = get_embedding(item["chunk"])
+    #     points.append(PointStruct(id=item["id"], vector=vector, payload=item))
+    # client.upsert(collection_name=COLLECTION, points=points)
 
 def get_top_chunks(query, k=5):
     """Retrieve the most relevant chunks from Qdrant."""
+    # Use the imported get_embedding from populate_database.py for query embedding
     query_vector = get_embedding(query)
-    results = client.search(
-        collection_name=COLLECTION,
-        query_vector=query_vector,
-        limit=k
+    results = client.query_points(
+        collection_name=COLLECTION_NAME,
+        query=query_vector,  # Changed from query_vector to query
+        limit=k,
+        with_payload=True
     )
-    return [hit.payload["chunk"] for hit in results]
+    # Handle the results structure properly
+    chunks = []
+    # results is typically a QueryResponse object with a .points attribute
+    points = getattr(results, 'points', results)
+    if isinstance(points, list):
+        for hit in points:
+            payload = getattr(hit, "payload", None)
+            if payload is None and isinstance(hit, dict):
+                payload = hit.get("payload", {})
+            if payload and "chunk" in payload:
+                chunks.append(payload["chunk"])
+    return chunks
 
 recipient_context = {}
 
 # Stack to track question and answer history for backtracking
 question_stack = []
+
+
+def generate_answer(query, chunks):
+    """Use Azure OpenAI to generate an answer given retrieved chunks."""
+    completion_client = AzureOpenAI(
+        api_key=COMPLETION_API_KEY,
+        api_version=AZURE_OPENAI_API_VERSION,
+        azure_endpoint=COMPLETION_API_BASE
+    )
+    context = "\n".join(chunks)
+    prompt = f"Context:\n{context}\n\nQuestion: {query}\nAnswer:"
+    response = completion_client.chat.completions.create(
+        model=COMPLETION_MODEL_NAME,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=200
+    )
+    return response.choices[0].message.content
 
 def ask_and_respond(question, prev_q=None, prev_a=None):
     # Build a one-paragraph natural question based on recipient context
@@ -203,21 +234,25 @@ def follow_up_chat():
         except Exception as e:
             print("❌ Error:", e)
 
-if __name__ == "__main__":
-    print("🎁 Welcome to the Experience Gifting Assistant!\nI'll ask a few quick questions to help you find the perfect gift.\n")
-
-    _ = collect_gift_info()
-
+def run_this():
+    
+    print("📝 Let's start with some quick questions to get to know the recipient better.\n")
+    collect_gift_info()
+    
+    final_prompt = format_final_prompt()
+    print("\n🎯 Based on your answers, here's the final prompt for the AI:\n")
+    print(final_prompt)
+    
+    print("\n💡 Now let's see what unique experience gift the AI suggests...")
+    print(final_prompt)
     try:
-        final_prompt = format_final_prompt()
-        messages = [{"role": "user", "content": final_prompt}]
-        suggestion = query_groq(messages)
-        print("\n✨ Final Experience Recommendation:")
-        print(suggestion)
+        ai_suggestion = query_groq([{"role": "user", "content": final_prompt}])
+        print("🤖 AI Suggestion:", ai_suggestion)
     except Exception as e:
-        print("❌ Error:", e)
-
-    # Example manual back call
-    # print("⬅️ Going back:", go_back())
+        print("❌ AI Suggestion Error:", e)
 
     follow_up_chat()
+
+if __name__ == "__main__":
+    print("🎁 Welcome to the Experience Gifting Assistant!\nI'll ask a few quick questions to help you find the perfect gift.\n")
+    run_this()
