@@ -8,3 +8,5 @@ wikipedia
 openai
 qdrant-client
 nltk
+fastapi
+uvicorn

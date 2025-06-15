@@ -17,11 +17,11 @@ import nltk
 # openai.api_version = ""
 from openai import AzureOpenAI
 
-client = AzureOpenAI(
-    api_key=os.getenv("Azure_OpenAI"),
-    azure_endpoint=os.getenv("Azure_link"),
-    api_version="2023-05-15"  # or the version you have access to
-)
+# client = AzureOpenAI(
+#     api_key=os.getenv("Azure_OpenAI"),
+#     azure_endpoint=os.getenv("Azure_link"),
+#     api_version="2023-05-15"  # or the version you have access to
+# )
 
 def get_embedding(text):
     response = client.embeddings.create(
@@ -167,37 +167,51 @@ def go_back():
 
 import random
 
-# Multiple variations for each question to add randomness and freshness
+# questions_alternatives = [
+#     [
+#         "Tell me a bit about your relationship with the person you're gifting—are they a close friend, partner, sibling, or someone else?",
+#         "How would you describe your connection with the person you’re planning to surprise?",
+#         "Who is the gift for, and what kind of bond do you share—friendship, family, love, or something else?",
+#         "What’s your relationship with this person—are they someone you see daily or reconnect with on special occasions?"
+#     ],
+#     [
+#         "What's the special occasion or reason behind this gift—birthday, anniversary, celebration, or just a surprise?",
+#         "What’s the occasion for this gift—something planned or a spontaneous surprise?",
+#         "Is this gift for a birthday, milestone, or just a ‘thinking of you’ kind of moment?",
+#         "Are you celebrating anything specific with this gift, or is it just to brighten their day?"
+#     ],
+#     [
+#         "If you had to describe their vibe or personality in a few words—like adventurous, calm, creative, or foodie—what would you say?",
+#         "What kind of energy or personality does the recipient bring—are they outgoing, introverted, artistic, or a thrill-seeker?",
+#         "How would you sum up their style or interests? Outdoorsy, luxury-loving, chill, high-energy?",
+#         "Give me a quick sense of their personality—what makes them light up?"
+#     ],
+#     [
+#         "What’s the general budget you’re planning to spend on this experience gift?",
+#         "Roughly how much would you like to spend on this experience?",
+#         "Do you have a price range in mind for this gift?",
+#         "Are you going for something small and sweet, or are you open to something more premium?"
+#     ],
+#     [
+#         "Is there a specific city or region you’d like the experience to take place in, or should it be something flexible or online?",
+#         "Where should this experience happen? In a specific city or should it be open to anywhere—or even virtual?",
+#         "Do you have a location in mind for the experience, or would you prefer something flexible or remote?",
+#         "Would you like the experience to be tied to a specific place, or is flexibility more important?"
+#     ]
+# ]
+
 questions_alternatives = [
     [
-        "Tell me a bit about your relationship with the person you're gifting—are they a close friend, partner, sibling, or someone else?",
-        "How would you describe your connection with the person you’re planning to surprise?",
-        "Who is the gift for, and what kind of bond do you share—friendship, family, love, or something else?",
-        "What’s your relationship with this person—are they someone you see daily or reconnect with on special occasions?"
+        "Tell us about the recipient. What's their name, city, your relationship with them, the occasion, and your budget range?",
+        "Let's start with some basic information about who you're shopping for. Include their name, location, your relationship, the occasion, and your budget range."
     ],
     [
-        "What's the special occasion or reason behind this gift—birthday, anniversary, celebration, or just a surprise?",
-        "What’s the occasion for this gift—something planned or a spontaneous surprise?",
-        "Is this gift for a birthday, milestone, or just a ‘thinking of you’ kind of moment?",
-        "Are you celebrating anything specific with this gift, or is it just to brighten their day?"
+        "What are they interested in? List their interests from options like: Adventure, Dining, Wellness, Luxury, Learning, Sports, Arts, Music, Travel, Nature, Technology. Feel free to add any others.",
+        "Now let's get into their interests. Choose all that apply from: Adventure, Dining, Wellness, Luxury, Learning, Sports, Arts, Music, Travel, Nature, Technology—or anything else you can think of."
     ],
     [
-        "If you had to describe their vibe or personality in a few words—like adventurous, calm, creative, or foodie—what would you say?",
-        "What kind of energy or personality does the recipient bring—are they outgoing, introverted, artistic, or a thrill-seeker?",
-        "How would you sum up their style or interests? Outdoorsy, luxury-loving, chill, high-energy?",
-        "Give me a quick sense of their personality—what makes them light up?"
-    ],
-    [
-        "What’s the general budget you’re planning to spend on this experience gift?",
-        "Roughly how much would you like to spend on this experience?",
-        "Do you have a price range in mind for this gift?",
-        "Are you going for something small and sweet, or are you open to something more premium?"
-    ],
-    [
-        "Is there a specific city or region you’d like the experience to take place in, or should it be something flexible or online?",
-        "Where should this experience happen? In a specific city or should it be open to anywhere—or even virtual?",
-        "Do you have a location in mind for the experience, or would you prefer something flexible or remote?",
-        "Would you like the experience to be tied to a specific place, or is flexibility more important?"
+        "Help us understand their personality. What are some traits or lifestyle habits that define them? Are there any specific preferences we should know?",
+        "Almost done—now tell us about their personality. Include traits, lifestyle details, and any specific preferences that could shape the experience gift."
     ]
 ]
 
@@ -217,6 +231,8 @@ def format_final_prompt():
         prompt += f"{key.replace('_', ' ').capitalize()}: {value}\n"
     prompt += "\nKeep it concise but vivid."
     return prompt
+
+
 
 def follow_up_chat():
     print("🗨️ You can now ask any follow-up questions about the gift or recipient. Type 'exit' to end.")
@@ -238,6 +254,7 @@ def run_this():
     
     print("📝 Let's start with some quick questions to get to know the recipient better.\n")
     collect_gift_info()
+    
     
     final_prompt = format_final_prompt()
     print("\n🎯 Based on your answers, here's the final prompt for the AI:\n")
