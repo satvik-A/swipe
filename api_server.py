@@ -7,6 +7,16 @@ from main import get_question, get_ans, get_top_chunks, recipient_context, quest
 
 app = FastAPI()
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or restrict to your frontend domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Models for request bodies
 class SubmitRequest(BaseModel):
     ans: str
