@@ -1,8 +1,16 @@
-from tools import query_groq
+from tools import query_groq    
 from qdrant_client.models import VectorParams, Distance
+import fastapi
 
 from tools import query_groq
 from dotenv import load_dotenv
+
+load_dotenv(override=True)
+Azure_OpenAI = os.getenv("Azure_OpenAI")
+Azure_link = os.getenv("Azure_link")
+QDRANT_API_KEY = os.getenv("QDRANT_API")
+QDRANT_HOST = os.getenv("QDRANT-URL")
+
 
 import os
 import csv
@@ -23,13 +31,134 @@ from openai import AzureOpenAI
 #     api_version="2023-05-15"  # or the version you have access to
 # )
 
-def get_embedding(text):
-    response = client.embeddings.create(
-        input=[text],
-        model="embedding-model-name",  # e.g., "text-embedding-ada-002"
-        deployment_id="your-deployment-id"  # Azure deployment name
+
+client = QdrantClient(
+    url=QDRANT_HOST,
+    api_key=QDRANT_API_KEY
+)
+
+# ---------------------------------------------------------------------
+# Helper Functions
+# ---------------------------------------------------------------------
+
+def get_embedding(text_chunk):
+    """Generate an embedding using Azure OpenAI."""
+    try:
+        response = embedding_client.embeddings.create(
+            input=text_chunk,  # Changed from [text_chunk] to text_chunk
+            model=EMBEDDING_MODEL_NAME
+        )
+        return response.data[0].embedding
+    except Exception as e:
+        print(f"Error getting embedding for chunk '{text_chunk[:30]}...': {e}")
+        return None
+
+def get_top_chunks(query, k=5):
+    """Retrieve the most relevant chunks from Qdrant with budget filtering."""
+    # Parse budget from query
+    user_budget = parse_budget_from_query(query)
+    
+    # Use the imported get_embedding from populate_database.py for query embedding
+    query_vector = get_embedding(query)
+    
+    # Get more results initially in case we need to filter by budget
+    search_limit = k * 3 if user_budget else k
+    
+    results = client.query_points(
+        collection_name="dragv4_bot",
+        query=query_vector,
+        limit=search_limit,
+        with_payload=True
     )
-    return response.data[0].embedding
+    
+    # Handle the results structure properly
+    chunks = []
+    points = getattr(results, 'points', results)
+    if isinstance(points, list):
+        for hit in points:
+            payload = getattr(hit, "payload", None)
+            if payload is None and isinstance(hit, dict):
+                payload = hit.get("payload", {})
+            
+            if payload and "title" in payload:
+                # Get price from payload (now stored directly in Qdrant)
+                chunk_price = payload.get("price", float('inf'))
+                chunk_id = payload.get("id", "")
+                title = payload.get("title", "")
+                
+                # Filter by budget if user specified one
+                if user_budget is not None:
+                    if chunk_price <= user_budget:
+                        chunks.append({
+                            "id": chunk_id,
+                            "title": title,
+                            "price": chunk_price
+                        })
+                        if len(chunks) >= k:  # Stop when we have enough chunks
+                            break
+                else:
+                    # No budget filter, add all chunks
+                    chunks.append({
+                        "id": chunk_id,
+                        "title": title,
+                        "price": chunk_price
+                    })
+                    if len(chunks) >= k:  # Stop when we have enough chunks
+                        break
+    
+    return chunks
+
+def parse_budget_from_query(query):
+    """Extract budget from user query."""
+    
+    # Look for patterns like "budget $1000", "budget 1000", "$1000 budget", etc.
+    patterns = [
+        r'budget\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'\$(\d+(?:,\d{3})*(?:\.\d{2})?)\s*budget',
+        r'under\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'within\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'maximum\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'max\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'\$(\d+(?:,\d{3})*(?:\.\d{2})?)'
+    ]
+    
+    query_lower = query.lower()
+    
+    for pattern in patterns:
+        match = re.search(pattern, query_lower)
+        if match:
+            try:
+                # Remove commas and convert to float
+                budget_str = match.group(1).replace(',', '')
+                return float(budget_str)
+            except (ValueError, AttributeError):
+                continue
+    
+    return None
+
+def generate_answer(query, chunks):
+    """Use Azure OpenAI to generate an answer given retrieved chunks."""
+    completion_client = AzureOpenAI(
+        api_key=Azure_OpenAI,
+        api_version="2023-05-15",
+        azure_endpoint=Azure_link
+    )
+    
+    # Format chunks with title and price information
+    context_parts = []
+    for chunk in chunks:
+        context_parts.append(f"Experience: {chunk['title']} (Price: ${chunk['price']:.2f})")
+    
+    context = "\n".join(context_parts)
+    prompt = f"Context:\n{context}\n\nQuestion: {query}\nAnswer:"
+    
+    response = completion_client.chat.completions.create(
+        model=COMPLETION_MODEL_NAME,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=200
+    )
+    return response.choices[0].message.content
+
 
 EMBEDDING_MODEL = "embed model name"  # Azure OpenAI embedding deployment
 # COMPLETION_MODEL = "ychat completion model name (response model)"       # Azure OpenAI completion deployment
@@ -43,52 +172,7 @@ client = QdrantClient(
     api_key=QDRANT_API_KEY
 )
 
-# def get_embedding(text):
-#     """Generate an embedding using Azure OpenAI."""
-#     response = openai.Embedding.create(
-#         input=[text],
-#         engine=EMBEDDING_MODEL
-#     )
-#     return response["data"][0]["embedding"]
 
-# def create_collection():
-#     """Create or recreate the Qdrant collection."""
-#     client.recreate_collection(
-#         collection_name=COLLECTION,
-#         vectors_config=VectorParams(size=384, distance=Distance.COSINE)#COSINE is  a method of similarity search select size accroding to dim of embed model
-# # cool  what is size
-#     )
-    
-    # def upload_vectors(index_data):
-    #     """Upload data to Qdrant."""
-    # points = []
-    # for item in index_data:
-    #     vector = get_embedding(item["chunk"])
-    #     points.append(PointStruct(id=item["id"], vector=vector, payload=item))
-    # client.upsert(collection_name=COLLECTION, points=points)
-
-def get_top_chunks(query, k=5):
-    """Retrieve the most relevant chunks from Qdrant."""
-    # Use the imported get_embedding from populate_database.py for query embedding
-    query_vector = get_embedding(query)
-    results = client.query_points(
-        collection_name=COLLECTION_NAME,
-        query=query_vector,  # Changed from query_vector to query
-        limit=k,
-        with_payload=True
-    )
-    # Handle the results structure properly
-    chunks = []
-    # results is typically a QueryResponse object with a .points attribute
-    points = getattr(results, 'points', results)
-    if isinstance(points, list):
-        for hit in points:
-            payload = getattr(hit, "payload", None)
-            if payload is None and isinstance(hit, dict):
-                payload = hit.get("payload", {})
-            if payload and "chunk" in payload:
-                chunks.append(payload["chunk"])
-    return chunks
 
 recipient_context = {}
 
@@ -96,23 +180,15 @@ recipient_context = {}
 question_stack = []
 
 
-def generate_answer(query, chunks):
-    """Use Azure OpenAI to generate an answer given retrieved chunks."""
-    completion_client = AzureOpenAI(
-        api_key=COMPLETION_API_KEY,
-        api_version=AZURE_OPENAI_API_VERSION,
-        azure_endpoint=COMPLETION_API_BASE
-    )
-    context = "\n".join(chunks)
-    prompt = f"Context:\n{context}\n\nQuestion: {query}\nAnswer:"
-    response = completion_client.chat.completions.create(
-        model=COMPLETION_MODEL_NAME,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=200
-    )
-    return response.choices[0].message.content
+import re
+# Track the current question index for sequential question generation
+current_question_index = 0
 
-def ask_and_respond(question, prev_q=None, prev_a=None):
+def ask_and_respond(question, external_answer=None):
+    """
+    Generate a natural language question prompt, and either ask for input via CLI or accept an external answer.
+    """
+    global recipient_context, question_stack
     # Build a one-paragraph natural question based on recipient context
     context_summary = "\n".join([f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in recipient_context.items()])
      
@@ -132,18 +208,20 @@ def ask_and_respond(question, prev_q=None, prev_a=None):
         print("❌ AI Question Generation Error:", e)
         final_question = question  # fallback
 
-    # Ask the generated paragraph-question
-    answer = input(f"{final_question}\n> ")
+    # If external_answer is provided, use it, else fall back to CLI input
+    if external_answer is not None:
+        answer = external_answer
+    else:
+        answer = input(f"{final_question}\n> ")
 
     # Store context
-    import re
     safe_q = re.sub(r'[^\w\s]', '', question).strip().lower()
     key = '_'.join(safe_q.split())[:40]
     recipient_context[key] = answer
     question_stack.append((key, question, answer))
 
-    # Generate a follow-up conversational comment
-    context_summary = "\n".join([f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in recipient_context.items()])
+    # Optionally: Generate a follow-up conversational comment (currently commented out)
+    # context_summary = "\n".join([f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in recipient_context.items()])
     # response_prompt = (
     #     f"You are helping someone choose a gift experience. Here's what you know so far:\n{context_summary}\n"
     #     f"Respond briefly and conversationally to their answer: '{answer}'"
@@ -156,6 +234,46 @@ def ask_and_respond(question, prev_q=None, prev_a=None):
     #     print("❌ AI Error:", e)
 
     return question, answer
+
+def get_ans(question, external_answer=None):
+    """
+    Generate a question prompt and get an answer from the user or an external source.
+    """
+    global current_question_index, questions_alternatives
+    if current_question_index >= len(questions_alternatives):
+        return None
+
+    # Get the next question based on the current index
+    next_question = get_next_question()
+    if not next_question:
+        return None
+
+    # Ask the question and get the answer
+    return ask_and_respond(next_question, external_answer)
+
+# Generate the next question using Groq based on the current index
+def get_next_question():
+    """
+    Generate the next question for the user based on the current_question_index and recipient_context.
+    """
+    global current_question_index, questions_alternatives
+    if current_question_index >= len(questions_alternatives):
+        return None
+    alternatives = questions_alternatives[current_question_index]
+    import random
+    return random.choice(alternatives)
+
+# Store an answer for a given question, updating context and stack
+def submit_answer(question, answer):
+    """
+    Store the answer for the given question in recipient_context and question_stack.
+    """
+    global recipient_context, question_stack
+    safe_q = re.sub(r'[^\w\s]', '', question).strip().lower()
+    key = '_'.join(safe_q.split())[:40]
+    recipient_context[key] = answer
+    question_stack.append((key, question, answer))
+    return key
 def go_back():
     """Go back to the previous question by removing the last entry from recipient_context and question_stack."""
     if not question_stack:
@@ -167,38 +285,6 @@ def go_back():
 
 import random
 
-# questions_alternatives = [
-#     [
-#         "Tell me a bit about your relationship with the person you're gifting—are they a close friend, partner, sibling, or someone else?",
-#         "How would you describe your connection with the person you’re planning to surprise?",
-#         "Who is the gift for, and what kind of bond do you share—friendship, family, love, or something else?",
-#         "What’s your relationship with this person—are they someone you see daily or reconnect with on special occasions?"
-#     ],
-#     [
-#         "What's the special occasion or reason behind this gift—birthday, anniversary, celebration, or just a surprise?",
-#         "What’s the occasion for this gift—something planned or a spontaneous surprise?",
-#         "Is this gift for a birthday, milestone, or just a ‘thinking of you’ kind of moment?",
-#         "Are you celebrating anything specific with this gift, or is it just to brighten their day?"
-#     ],
-#     [
-#         "If you had to describe their vibe or personality in a few words—like adventurous, calm, creative, or foodie—what would you say?",
-#         "What kind of energy or personality does the recipient bring—are they outgoing, introverted, artistic, or a thrill-seeker?",
-#         "How would you sum up their style or interests? Outdoorsy, luxury-loving, chill, high-energy?",
-#         "Give me a quick sense of their personality—what makes them light up?"
-#     ],
-#     [
-#         "What’s the general budget you’re planning to spend on this experience gift?",
-#         "Roughly how much would you like to spend on this experience?",
-#         "Do you have a price range in mind for this gift?",
-#         "Are you going for something small and sweet, or are you open to something more premium?"
-#     ],
-#     [
-#         "Is there a specific city or region you’d like the experience to take place in, or should it be something flexible or online?",
-#         "Where should this experience happen? In a specific city or should it be open to anywhere—or even virtual?",
-#         "Do you have a location in mind for the experience, or would you prefer something flexible or remote?",
-#         "Would you like the experience to be tied to a specific place, or is flexibility more important?"
-#     ]
-# ]
 
 questions_alternatives = [
     [
@@ -215,14 +301,10 @@ questions_alternatives = [
     ]
 ]
 
+answers = []
 def collect_gift_info():
-    answers = []
-    prev_q = prev_a = None
-    for alternatives in questions_alternatives:
-        q = random.choice(alternatives)
-        qa = ask_and_respond(q, prev_q, prev_a)
-        answers.append(qa)
-        prev_q, prev_a = qa
+    qa = ask_and_respond(get_next_question())
+    answers.append(qa)
     return answers
 
 def format_final_prompt():
