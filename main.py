@@ -1,6 +1,6 @@
 from tools import query_groq    
 from qdrant_client.models import VectorParams, Distance
-import fastapi
+import os
 
 from tools import query_groq
 from dotenv import load_dotenv
@@ -12,7 +12,7 @@ QDRANT_API_KEY = os.getenv("QDRANT_API")
 QDRANT_HOST = os.getenv("QDRANT-URL")
 
 
-import os
+
 import csv
 import openai
 import uuid
@@ -37,6 +37,12 @@ client = QdrantClient(
     api_key=QDRANT_API_KEY
 )
 
+embedding_client = AzureOpenAI(
+    api_key=Azure_OpenAI,
+    api_version="2023-05-15",
+    azure_endpoint=Azure_link
+)
+
 # ---------------------------------------------------------------------
 # Helper Functions
 # ---------------------------------------------------------------------
@@ -46,7 +52,7 @@ def get_embedding(text_chunk):
     try:
         response = embedding_client.embeddings.create(
             input=text_chunk,  # Changed from [text_chunk] to text_chunk
-            model=EMBEDDING_MODEL_NAME
+            model= "text-embedding-3-small"
         )
         return response.data[0].embedding
     except Exception as e:
@@ -179,12 +185,16 @@ recipient_context = {}
 # Stack to track question and answer history for backtracking
 question_stack = []
 
+only_questions = []
+current_question_index = 0
+# Import necessary libraries
+
 
 import re
 # Track the current question index for sequential question generation
 current_question_index = 0
 
-def ask_and_respond(question, external_answer=None):
+def ask(question):
     """
     Generate a natural language question prompt, and either ask for input via CLI or accept an external answer.
     """
@@ -207,51 +217,30 @@ def ask_and_respond(question, external_answer=None):
     except Exception as e:
         print("❌ AI Question Generation Error:", e)
         final_question = question  # fallback
+        
+    # ans = input(f"❓ {final_question}\n> ")
+        
 
-    # If external_answer is provided, use it, else fall back to CLI input
-    if external_answer is not None:
-        answer = external_answer
-    else:
-        answer = input(f"{final_question}\n> ")
+    return final_question
 
-    # Store context
-    safe_q = re.sub(r'[^\w\s]', '', question).strip().lower()
-    key = '_'.join(safe_q.split())[:40]
-    recipient_context[key] = answer
-    question_stack.append((key, question, answer))
-
-    # Optionally: Generate a follow-up conversational comment (currently commented out)
-    # context_summary = "\n".join([f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in recipient_context.items()])
-    # response_prompt = (
-    #     f"You are helping someone choose a gift experience. Here's what you know so far:\n{context_summary}\n"
-    #     f"Respond briefly and conversationally to their answer: '{answer}'"
-    # )
-    # messages = [{"role": "user", "content": response_prompt}]
-    # try:
-    #     ai_response = query_groq(messages)
-    #     print(f"🤖 {ai_response}\n")
-    # except Exception as e:
-    #     print("❌ AI Error:", e)
-
-    return question, answer
-
-def get_ans(question, external_answer=None):
+def get_ans(ans):
     """
-    Generate a question prompt and get an answer from the user or an external source.
+    Get an answer from the user or an external source, and store it in recipient_context.
     """
     global current_question_index, questions_alternatives
-    if current_question_index >= len(questions_alternatives):
+    if current_question_index > len(questions_alternatives):
         return None
 
     # Get the next question based on the current index
-    next_question = get_next_question()
-    if not next_question:
-        return None
+    # Store the answer in recipient_context and question_stack
+    
+    # key = submit_answer(question_stack.peek(), ans)
+    key = submit_answer(only_questions[current_question_index - 1], ans)
+    
+    # Increment the question index for the next call
+    # current_question_index += 1
+    return key
 
-    # Ask the question and get the answer
-    return ask_and_respond(next_question, external_answer)
-
-# Generate the next question using Groq based on the current index
 def get_next_question():
     """
     Generate the next question for the user based on the current_question_index and recipient_context.
@@ -261,7 +250,11 @@ def get_next_question():
         return None
     alternatives = questions_alternatives[current_question_index]
     import random
-    return random.choice(alternatives)
+    que = random.choice(alternatives)
+    # question_stack.add(que)
+    only_questions.append(que)
+    return que
+     
 
 # Store an answer for a given question, updating context and stack
 def submit_answer(question, answer):
@@ -274,6 +267,7 @@ def submit_answer(question, answer):
     recipient_context[key] = answer
     question_stack.append((key, question, answer))
     return key
+
 def go_back():
     """Go back to the previous question by removing the last entry from recipient_context and question_stack."""
     if not question_stack:
@@ -301,11 +295,12 @@ questions_alternatives = [
     ]
 ]
 
-answers = []
-def collect_gift_info():
-    qa = ask_and_respond(get_next_question())
-    answers.append(qa)
-    return answers
+# first question and continuation function
+def get_question():
+    global current_question_index
+    qa = ask(get_next_question())
+    current_question_index += 1
+    return qa
 
 def format_final_prompt():
     prompt = "You are a creative and thoughtful assistant helping someone choose a unique experience gift. Based on the following details, suggest one highly relevant experience with a short reason:\n\n"
@@ -333,22 +328,39 @@ def follow_up_chat():
             print("❌ Error:", e)
 
 def run_this():
-    collect_gift_info()
+    
+    while(current_question_index < len(questions_alternatives)):
+       quep = get_question()
+       print(quep)
+       ans = input(f"❓ {only_questions[current_question_index-1]}\n> ")
+       get_ans(ans)
+    
+       
+    
     
     
     final_prompt = format_final_prompt()
-    print("\n🎯 Based on your answers, here's the final prompt for the AI:\n")
-    print(final_prompt)
+    # print("\n🎯 Based on your answers, here's the final prompt for the AI:\n")
+    # print(final_prompt)
     
-    print("\n💡 Now let's see what unique experience gift the AI suggests...")
-    print(final_prompt)
-    try:
-        ai_suggestion = query_groq([{"role": "user", "content": final_prompt}])
-        print("🤖 AI Suggestion:", ai_suggestion)
-    except Exception as e:
-        print("❌ AI Suggestion Error:", e)
+    # print("\n💡 Now let's see what unique experience gift the AI suggests...")
+    # print(final_prompt)
+    # try:
+    #     ai_suggestion = query_groq([{"role": "user", "content": final_prompt}])
+    #     print("🤖 AI Suggestion:", ai_suggestion)
+    # except Exception as e:
+    #     print("❌ AI Suggestion Error:", e)
+        
+    chunks = get_top_chunks(final_prompt, k=5)
+    if chunks:
+        print("\n🔍 Here are some relevant experience options based on your context:")
+        for chunk in chunks:
+            print(f"- {chunk['title']} (Price: ${chunk['price']:.2f})")
+    # else:
+    #     print("❌ No relevant experience options found.")
+    # print("\n🎉 Gift experience suggestion complete! You can now ask follow-up questions or go back to previous questions.")
 
-    follow_up_chat()
+    # follow_up_chat()
 
 if __name__ == "__main__":
     run_this()
