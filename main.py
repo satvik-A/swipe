@@ -262,8 +262,12 @@ def submit_answer(question, answer):
     Store the answer for the given question in recipient_context and question_stack.
     """
     global recipient_context, question_stack
+    print(f"Storing answer for question: {question} with answer: {answer}")
     safe_q = re.sub(r'[^\w\s]', '', question).strip().lower()
-    key = '_'.join(safe_q.split())[:40]
+    print(f"Safe question for key generation: {safe_q}")
+    # key = '_'.join(safe_q.split())[:40]
+    key = safe_q.replace(' ', '_')
+    print(f"Generated key for context: {key}")
     recipient_context[key] = answer
     question_stack.append((key, question, answer))
     return key
@@ -272,6 +276,8 @@ def go_back():
     """Go back to the previous question by removing the last entry from recipient_context and question_stack."""
     if not question_stack:
         return {"error": "No previous question to go back to."}
+    global current_question_index
+    current_question_index -= 1
     key, question, answer = question_stack.pop()
     if key in recipient_context:
         del recipient_context[key]
@@ -333,15 +339,21 @@ def run_this():
        quep = get_question()
        print(quep)
        ans = input(f"❓ {only_questions[current_question_index-1]}\n> ")
-       get_ans(ans)
-    
-       
-    
-    
-    
+       if(ans == "back"):
+              print("Going back to the previous question...")
+              go_back()
+              continue
+       else:
+             get_ans(ans)
+             print(recipient_context)
+             print(recipient_context.keys())
+             print("Current question index:", current_question_index)
+       print(recipient_context)
+       print(recipient_context.keys())
+       print("Current question index:", current_question_index)
     final_prompt = format_final_prompt()
     # print("\n🎯 Based on your answers, here's the final prompt for the AI:\n")
-    # print(final_prompt)
+    print(final_prompt)
     
     # print("\n💡 Now let's see what unique experience gift the AI suggests...")
     # print(final_prompt)
