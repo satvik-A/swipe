@@ -12,6 +12,8 @@ Azure_link = os.getenv("Azure_link")
 QDRANT_API_KEY = os.getenv("QDRANT_API")
 QDRANT_HOST = os.getenv("QDRANT-URL")
 
+# Fallback validation for critical .env variables
+
 
 
 import csv
@@ -174,6 +176,9 @@ QDRANT_HOST = os.getenv("QDRANT-URL")  # e.g., "https://YOUR-QDRANT-URL
 QDRANT_API_KEY = os.getenv("QDRANT_API")
 COLLECTION = "dragv4_bot"
 
+# Use environment variable for completion model name, fallback to default
+COMPLETION_MODEL_NAME = os.getenv("COMPLETION_MODEL_NAME", "gpt-4o-mini")
+
 client = QdrantClient(
     url=QDRANT_HOST,
     api_key=QDRANT_API_KEY
@@ -314,10 +319,33 @@ def get_question():
     return ask(get_next_question())
 
 def format_final_prompt():
-    prompt = "You are a creative and thoughtful assistant helping someone choose a unique experience gift. Based on the following details, suggest one highly relevant experience with a short reason:\n\n"
+    """Extract only the values from recipient_context and format them as a comma-separated string."""
+    # prompt = "You are a creative and thoughtful assistant helping someone choose a unique experience gift. Based on the following details, suggest one highly relevant experience with a short reason:\n\n"
+    prompt = ""
+
+    # Extract only the values from recipient_context, excluding recipient name but including location
+    values = []
     for key, value in recipient_context.items():
-        prompt += f"{key.replace('_', ' ').capitalize()}: {value}\n"
-    prompt += "\nKeep it concise but vivid."
+        if value and str(value).strip():  # Only add non-empty values
+            # Skip keys that contain recipient name, but preserve location/city information
+            if 'name' in key.lower() and 'city' not in key.lower() and 'location' not in key.lower():
+                continue
+            if 'recipient' in key.lower() and 'city' not in key.lower() and 'location' not in key.lower():
+                continue
+            
+            clean_value = str(value).strip()
+            # Remove $ sign and extra formatting if present
+            if clean_value.startswith('$'):
+                clean_value = clean_value[1:]
+            values.append(clean_value)
+    
+    # Join values with commas
+    if values:
+        prompt += f"{', '.join(values)}\n"
+    else:
+        prompt += "No specific details provided.\n"
+    
+    # prompt += "\nKeep it concise but vivid."
     return prompt
 
 
@@ -376,6 +404,7 @@ def run_this():
 
     final_prompt = format_final_prompt()
     # print("\n🎯 Based on your answers, here's the final prompt for the AI:\n")
+    print("this is final prompt")
     print(final_prompt)
     
     # print("\n💡 Now let's see what unique experience gift the AI suggests...")
