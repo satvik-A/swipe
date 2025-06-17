@@ -172,12 +172,11 @@ EMBEDDING_MODEL = "embed model name"  # Azure OpenAI embedding deployment
 
 QDRANT_HOST = os.getenv("QDRANT-URL")  # e.g., "https://YOUR-QDRANT-URL
 QDRANT_API_KEY = os.getenv("QDRANT_API")
-COLLECTION = "rag_bot"
+COLLECTION = "dragv4_bot"
 
 client = QdrantClient(
     url=QDRANT_HOST,
     api_key=QDRANT_API_KEY
-    COLLECTION = "dragv4_bot"
 )
 
 
