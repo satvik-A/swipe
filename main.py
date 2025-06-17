@@ -16,6 +16,7 @@ QDRANT_HOST = os.getenv("QDRANT-URL")
 
 
 
+
 import csv
 import openai
 import uuid
