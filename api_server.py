@@ -83,3 +83,9 @@ async def context():
         "recipient_context": recipient_context,
         "question_stack": stack_serializable
     }
+
+
+# FastAPI startup event logger
+@app.on_event("startup")
+async def startup_event():
+    print("✅ FastAPI app is live and running!")
