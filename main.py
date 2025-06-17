@@ -5,6 +5,7 @@ import os
 from tools import query_groq
 from dotenv import load_dotenv
 
+#Environment variables
 load_dotenv(override=True)
 Azure_OpenAI = os.getenv("Azure_OpenAI")
 Azure_link = os.getenv("Azure_link")
@@ -176,6 +177,7 @@ COLLECTION = "rag_bot"
 client = QdrantClient(
     url=QDRANT_HOST,
     api_key=QDRANT_API_KEY
+    COLLECTION = "dragv4_bot"
 )
 
 
@@ -235,7 +237,7 @@ def get_ans(ans):
     # Store the answer in recipient_context and question_stack
     
     # key = submit_answer(question_stack.peek(), ans)
-    key = submit_answer(only_questions[current_question_index - 1], ans)
+    key = submit_answer(only_questions[current_question_index], ans)
     
     # Increment the question index for the next call
     # current_question_index += 1
@@ -275,13 +277,16 @@ def submit_answer(question, answer):
 def go_back():
     """Go back to the previous question by removing the last entry from recipient_context and question_stack."""
     if not question_stack:
+        print("No previous question to go back to.")
         return {"error": "No previous question to go back to."}
     global current_question_index
     current_question_index -= 1
-    key, question, answer = question_stack.pop()
-    if key in recipient_context:
-        del recipient_context[key]
-    return {"question": question, "answer": answer}
+    # key, question, answer = question_stack.pop()
+    # if key in recipient_context:
+    #     del recipient_context[key]
+    if only_questions:
+        only_questions.pop()
+    return 
 
 import random
 
@@ -303,10 +308,11 @@ questions_alternatives = [
 
 # first question and continuation function
 def get_question():
-    global current_question_index
-    qa = ask(get_next_question())
-    current_question_index += 1
-    return qa
+    # global current_question_index
+    # qa = ask(get_next_question())
+    # current_question_index += 1
+    # return qa
+    return ask(get_next_question())
 
 def format_final_prompt():
     prompt = "You are a creative and thoughtful assistant helping someone choose a unique experience gift. Based on the following details, suggest one highly relevant experience with a short reason:\n\n"
@@ -334,23 +340,41 @@ def follow_up_chat():
             print("❌ Error:", e)
 
 def run_this():
-    
+    global current_question_index
+    # while(current_question_index < len(questions_alternatives)):
+    #    quep = get_question()
+    #    print(quep)
+    #    ans = input(f"❓ {only_questions[current_question_index-1]}\n> ")
+    #    if(ans == "back"):
+    #           print("Going back to the previous question...")
+    #           go_back()
+    #           continue
+    #    else:
+    #          get_ans(ans)
     while(current_question_index < len(questions_alternatives)):
-       quep = get_question()
-       print(quep)
-       ans = input(f"❓ {only_questions[current_question_index-1]}\n> ")
-       if(ans == "back"):
-              print("Going back to the previous question...")
-              go_back()
-              continue
-       else:
-             get_ans(ans)
-             print(recipient_context)
-             print(recipient_context.keys())
-             print("Current question index:", current_question_index)
-       print(recipient_context)
-       print(recipient_context.keys())
-       print("Current question index:", current_question_index)
+        if current_question_index == len(only_questions):
+                quep = get_question()
+        else:
+            quep = ask(only_questions[current_question_index])  # re-ask same question if backtracked
+
+        print(quep)
+        ans = input(f"❓ {only_questions[current_question_index]}\n> ")
+
+        if ans.lower() == "back":
+            print("Going back to the previous question...")
+            go_back()
+            continue
+        else:
+            get_ans(ans)
+            current_question_index += 1
+            print(recipient_context)
+            print(recipient_context.keys())
+            print("Current question index:", current_question_index)
+        
+        print(recipient_context)
+        print(recipient_context.keys())
+        print("Current question index:", current_question_index)
+
     final_prompt = format_final_prompt()
     # print("\n🎯 Based on your answers, here's the final prompt for the AI:\n")
     print(final_prompt)
