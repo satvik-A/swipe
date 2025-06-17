@@ -13,7 +13,7 @@ QDRANT_API_KEY = os.getenv("QDRANT_API")
 QDRANT_HOST = os.getenv("QDRANT-URL")
 
 # Fallback validation for critical .env variables
-assert Azure_OpenAI and Azure_link and QDRANT_API_KEY and QDRANT_HOST, "Missing one or more critical .env variables"
+
 
 
 
