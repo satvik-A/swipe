@@ -242,6 +242,8 @@ def get_ans(ans):
     # Store the answer in recipient_context and question_stack
     
     # key = submit_answer(question_stack.peek(), ans)
+    print(only_questions[current_question_index])
+    print(current_question_index)
     key = submit_answer(only_questions[current_question_index], ans)
     
     # Increment the question index for the next call
@@ -260,6 +262,8 @@ def get_next_question():
     que = random.choice(alternatives)
     # question_stack.add(que)
     only_questions.append(que)
+    print(only_questions)
+    print(que)
     return que
      
 
