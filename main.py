@@ -247,7 +247,7 @@ def get_ans(ans):
     key = submit_answer(only_questions[current_question_index], ans)
     
     # Increment the question index for the next call
-    # current_question_index += 1
+    current_question_index += 1
     return key
 
 def get_next_question():
@@ -331,6 +331,8 @@ def format_final_prompt():
     # Extract only the values from recipient_context, excluding recipient name but including location
     values = []
     for key, value in recipient_context.items():
+        print(key)
+        print(value)
         if value and str(value).strip():  # Only add non-empty values
             # Skip keys that contain recipient name, but preserve location/city information
             if 'name' in key.lower() and 'city' not in key.lower() and 'location' not in key.lower():
@@ -398,7 +400,7 @@ def run_this():
             continue
         else:
             get_ans(ans)
-            current_question_index += 1
+            # current_question_index += 1
             print(recipient_context)
             print(recipient_context.keys())
             print("Current question index:", current_question_index)
