@@ -3,7 +3,7 @@
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Any, Dict
-from main import get_question, get_ans, get_top_chunks, recipient_context, question_stack
+from main import get_question, get_ans, get_top_chunks, recipient_context, question_stack, go_back
 
 app = FastAPI()
 
@@ -83,6 +83,16 @@ async def context():
         "recipient_context": recipient_context,
         "question_stack": stack_serializable
     }
+
+
+# Add endpoint for going back to previous question
+@app.get("/back")
+async def back():
+    """
+    Go back to the previous question.
+    """
+    result = go_back()
+    return {"status": "ok", "result": result}
 
 
 # FastAPI startup event logger

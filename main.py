@@ -324,11 +324,15 @@ questions_alternatives = [
 
 # first question and continuation function
 def get_question():
-    # global current_question_index
-    # qa = ask(get_next_question())
-    # current_question_index += 1
-    # return qa
-    return ask(get_next_question())
+    global current_question_index, only_questions
+
+    # If user is at a new question
+    if current_question_index == len(only_questions):
+        que = get_next_question()  # This will append to only_questions
+    else:
+        que = only_questions[current_question_index]  # Re-ask the current question
+
+    return ask(que)
 
 def format_final_prompt():
     """Extract only the values from recipient_context and format them as a comma-separated string."""
