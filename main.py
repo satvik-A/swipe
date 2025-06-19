@@ -67,6 +67,11 @@ def get_top_chunks(query, k=5):
     """Retrieve the most relevant chunks from Qdrant with budget filtering."""
     # Parse budget from query
     user_budget = parse_budget_from_query(query)
+    print(f"Parsed user budget: {user_budget}")
+    if user_budget is not None:
+        print(f"User budget found: ${user_budget:.2f}")
+    else:
+        print("No budget specified in the query.")
     
     # Use the imported get_embedding from populate_database.py for query embedding
     query_vector = get_embedding(query)
@@ -75,13 +80,15 @@ def get_top_chunks(query, k=5):
     search_limit = k * 3 if user_budget else k
     
     results = client.query_points(
-        collection_name="dragv4_bot",
+        collection_name="dragv7_bot",
         query=query_vector,
         limit=search_limit,
         with_payload=True
     )
     
     # Handle the results structure properly
+    print(results)
+    print(f"Retrieved results from Qdrant.")
     chunks = []
     points = getattr(results, 'points', results)
     if isinstance(points, list):
@@ -175,7 +182,7 @@ EMBEDDING_MODEL = "embed model name"  # Azure OpenAI embedding deployment
 
 QDRANT_HOST = os.getenv("QDRANT-URL")  # e.g., "https://YOUR-QDRANT-URL
 QDRANT_API_KEY = os.getenv("QDRANT_API")
-COLLECTION = "dragv4_bot"
+COLLECTION = "dragv7_bot"
 
 # Use environment variable for completion model name, fallback to default
 COMPLETION_MODEL_NAME = os.getenv("COMPLETION_MODEL_NAME", "gpt-4o-mini")
@@ -422,14 +429,15 @@ def run_this():
     # except Exception as e:
     #     print("❌ AI Suggestion Error:", e)
         
-    chunks = get_top_chunks(final_prompt, k=5)
+    chunks = get_top_chunks(final_prompt, k=12)
     if chunks:
         print("\n🔍 Here are some relevant experience options based on your context:")
+        print(chunks)
         for chunk in chunks:
             print(f"- {chunk['title']} (Price: ${chunk['price']:.2f})")
-    # else:
-    #     print("❌ No relevant experience options found.")
-    # print("\n🎉 Gift experience suggestion complete! You can now ask follow-up questions or go back to previous questions.")
+    else:
+        print("❌ No relevant experience options found.")
+    print("\n🎉 Gift experience suggestion complete! You can now ask follow-up questions or go back to previous questions.")
 
     # follow_up_chat()
 
