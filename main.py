@@ -64,31 +64,28 @@ def get_embedding(text_chunk):
         return None
 
 def get_top_chunks(query, k=5):
-    """Retrieve the most relevant chunks from Qdrant with budget filtering."""
-    # Parse budget from query
+    """Retrieve the most relevant chunks from Qdrant with budget and location filtering."""
+    # Parse budget and location from query
     user_budget = parse_budget_from_query(query)
-    print(f"Parsed user budget: {user_budget}")
-    if user_budget is not None:
-        print(f"User budget found: ${user_budget:.2f}")
-    else:
-        print("No budget specified in the query.")
+    user_location = parse_location_from_query(query)
+    
+    print(f"🔍 Using budget: {user_budget}")
+    print(f"🔍 Using location: {user_location}")
     
     # Use the imported get_embedding from populate_database.py for query embedding
     query_vector = get_embedding(query)
     
-    # Get more results initially in case we need to filter by budget
-    search_limit = k * 3 if user_budget else k
+    # Get more results initially in case we need to filter by budget/location
+    search_limit = k * 5 if (user_budget or user_location) else k
     
     results = client.query_points(
-        collection_name="dragv7_bot",
+        collection_name="dragv8_bot",
         query=query_vector,
         limit=search_limit,
         with_payload=True
     )
     
     # Handle the results structure properly
-    print(results)
-    print(f"Retrieved results from Qdrant.")
     chunks = []
     points = getattr(results, 'points', results)
     if isinstance(points, list):
@@ -98,50 +95,106 @@ def get_top_chunks(query, k=5):
                 payload = hit.get("payload", {})
             
             if payload and "title" in payload:
-                # Get price from payload (now stored directly in Qdrant)
+                # Get price and location from payload
                 chunk_price = payload.get("price", float('inf'))
+                chunk_location = payload.get("location", "")
                 chunk_id = payload.get("id", "")
+                csv_id= payload.get("csv_id", "")
                 title = payload.get("title", "")
+                
+                # Apply filters
+                passes_budget_filter = True
+                passes_location_filter = True
                 
                 # Filter by budget if user specified one
                 if user_budget is not None:
-                    if chunk_price <= user_budget:
-                        chunks.append({
-                            "id": chunk_id,
-                            "title": title,
-                            "price": chunk_price
-                        })
-                        if len(chunks) >= k:  # Stop when we have enough chunks
-                            break
-                else:
-                    # No budget filter, add all chunks
+                    new_budget = user_budget*1.12
+                    passes_budget_filter = chunk_price <= new_budget
+                
+                # Filter by location if user specified one
+                if user_location is not None:
+                    if not chunk_location:
+                        # If chunk has no location but user specified one, skip this chunk
+                        passes_location_filter = False
+                    else:
+                        # Simple location matching for Delhi, Bangalore, Gurgaon
+                        user_location_lower = user_location.lower()
+                        chunk_location_lower = chunk_location.lower()
+                        
+                        print(f"🔍 Comparing: '{user_location_lower}' with '{chunk_location_lower}'")
+                        
+                        # Direct string matching for Indian cities
+                        passes_location_filter = (
+                            user_location_lower in chunk_location_lower or
+                            chunk_location_lower in user_location_lower
+                        )
+                        
+                        print(f"🔍 Location filter result: {passes_location_filter}")
+                
+                # Only add chunks that pass both filters
+                if passes_budget_filter and passes_location_filter:
                     chunks.append({
                         "id": chunk_id,
+                        "csv_id": csv_id,
                         "title": title,
-                        "price": chunk_price
+                        "price": chunk_price,
+                        "location": chunk_location
                     })
                     if len(chunks) >= k:  # Stop when we have enough chunks
                         break
     
+    # If we have filters but no results, provide feedback
+    if (user_budget or user_location) and not chunks:
+        print(f"⚠️  No experiences found matching your criteria:")
+        if user_budget:
+            print(f"   Budget: Under ₹{user_budget:,.2f}")
+        if user_location:
+            print(f"   Location: {user_location}")
+        print("   Try adjusting your budget or location preferences.")
+    
     return chunks
 
 def parse_budget_from_query(query):
-    """Extract budget from user query."""
+    """Extract budget from user query, including budget ranges. Returns the higher limit for ranges."""
     
-    # Look for patterns like "budget $1000", "budget 1000", "$1000 budget", etc.
-    patterns = [
+    # First check for budget ranges like "2000-4000", "$2000-$4000", etc.
+    range_patterns = [
+        r'budget\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)\s*-\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'\$?(\d+(?:,\d{3})*(?:\.\d{2})?)\s*-\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)\s*budget',
+        r'between\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)\s*-\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'between\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)\s*and\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'from\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)\s*to\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'\$?(\d+(?:,\d{3})*(?:\.\d{2})?)\s*-\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)'
+    ]
+    
+    query_lower = query.lower()
+    
+    # Check for range patterns first
+    for pattern in range_patterns:
+        match = re.search(pattern, query_lower)
+        if match:
+            try:
+                # Get both values from the range
+                min_budget = float(match.group(1).replace(',', ''))
+                max_budget = float(match.group(2).replace(',', ''))
+                # Return the higher value as the budget limit
+                return max(min_budget, max_budget)
+            except (ValueError, AttributeError):
+                continue
+    
+    # If no range found, look for single budget values
+    single_patterns = [
         r'budget\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',
         r'\$(\d+(?:,\d{3})*(?:\.\d{2})?)\s*budget',
         r'under\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',
         r'within\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',
         r'maximum\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',
         r'max\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'up\s*to\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)',
         r'\$(\d+(?:,\d{3})*(?:\.\d{2})?)'
     ]
     
-    query_lower = query.lower()
-    
-    for pattern in patterns:
+    for pattern in single_patterns:
         match = re.search(pattern, query_lower)
         if match:
             try:
@@ -150,6 +203,47 @@ def parse_budget_from_query(query):
                 return float(budget_str)
             except (ValueError, AttributeError):
                 continue
+    
+    return None
+
+def parse_location_from_query(query):
+    """Extract location from user query - only recognizes Delhi, Bangalore, and Gurgaon"""
+    query_lower = query.lower()
+    
+    # Only accept these three Indian cities
+    valid_locations = ['delhi', 'bangalore', 'gurgaon']
+    
+    # Split by commas and check each part (for structured input like "name,delhi,relation,occasion")
+    parts = [part.strip() for part in query.split(',')]
+    for part in parts:
+        part_lower = part.lower()
+        for location in valid_locations:
+            # Only match if the part is exactly the location
+            if part_lower == location:
+                return location.title()
+    
+    # Check for explicit location phrases
+    location_phrases = [
+        r'location[:\s]+([a-zA-Z\s]+?)(?:\s*,|\s*$)',
+        r'city[:\s]+([a-zA-Z\s]+?)(?:\s*,|\s*$)',
+        r'where[:\s]+([a-zA-Z\s]+?)(?:\s*,|\s*$)',
+        r'in\s+([a-zA-Z\s]+?)(?:\s*,|\s*$)'
+    ]
+    
+    for pattern in location_phrases:
+        match = re.search(pattern, query_lower)
+        if match:
+            location = match.group(1).strip()
+            location = re.sub(r'\b(the|a|an)\b', '', location, flags=re.IGNORECASE).strip()
+            location_lower = location.lower()
+            # Only return if it's one of our valid locations
+            if location_lower in valid_locations:
+                return location.title()
+    
+    # Direct substring search for valid locations only
+    for location in valid_locations:
+        if location in query_lower:
+            return location.title()
     
     return None
 
@@ -164,7 +258,7 @@ def generate_answer(query, chunks):
     # Format chunks with title and price information
     context_parts = []
     for chunk in chunks:
-        context_parts.append(f"Experience: {chunk['title']} (Price: ${chunk['price']:.2f})")
+        context_parts.append(f"Experience: {chunk['title']} (Price: ${chunk['price']:.2f}) [Chunk ID: {chunk['id']}, CSV ID: {chunk['csv_id']}]")
     
     context = "\n".join(context_parts)
     prompt = f"Context:\n{context}\n\nQuestion: {query}\nAnswer:"
@@ -182,7 +276,7 @@ EMBEDDING_MODEL = "embed model name"  # Azure OpenAI embedding deployment
 
 QDRANT_HOST = os.getenv("QDRANT-URL")  # e.g., "https://YOUR-QDRANT-URL
 QDRANT_API_KEY = os.getenv("QDRANT_API")
-COLLECTION = "dragv7_bot"
+COLLECTION = "dragv8_bot"
 
 # Use environment variable for completion model name, fallback to default
 COMPLETION_MODEL_NAME = os.getenv("COMPLETION_MODEL_NAME", "gpt-4o-mini")
@@ -297,9 +391,9 @@ def go_back():
         return {"error": "No previous question to go back to."}
     global current_question_index
     current_question_index -= 1
-    # key, question, answer = question_stack.pop()
-    # if key in recipient_context:
-    #     del recipient_context[key]
+    key, question, answer = question_stack.pop()
+    if key in recipient_context:
+        del recipient_context[key]
     if only_questions:
         only_questions.pop()
     return 
@@ -414,11 +508,13 @@ def run_this():
             # current_question_index += 1
             print(recipient_context)
             print(recipient_context.keys())
+            print(question_stack)
+            print("Question stack:", question_stack)
             print("Current question index:", current_question_index)
         
-        print(recipient_context)
-        print(recipient_context.keys())
-        print("Current question index:", current_question_index)
+        # print(recipient_context)
+        # print(recipient_context.keys())
+        # print("Current question index:", current_question_index)
 
     final_prompt = format_final_prompt()
     # print("\n🎯 Based on your answers, here's the final prompt for the AI:\n")
@@ -438,7 +534,7 @@ def run_this():
         print("\n🔍 Here are some relevant experience options based on your context:")
         print(chunks)
         for chunk in chunks:
-            print(f"- {chunk['title']} (Price: ${chunk['price']:.2f})")
+            print(f"- {chunk['title']} (Price: ${chunk['price']:.2f}) [CSV ID: {chunk['csv_id']}]")
     else:
         print("❌ No relevant experience options found.")
     print("\n🎉 Gift experience suggestion complete! You can now ask follow-up questions or go back to previous questions.")
