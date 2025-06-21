@@ -3,6 +3,11 @@ from pydantic import BaseModel
 from typing import Any, Dict
 from main import get_question, get_ans, get_top_chunks, recipient_context, question_stack, go_back
 
+from uuid import uuid4
+
+# Session-aware storage
+sessions: Dict[str, Dict[str, Any]] = {}
+
 app = FastAPI()
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +27,7 @@ app.add_middleware(
 
 # Models for request bodies
 class SubmitRequest(BaseModel):
+    session_id: str
     ans: str
 
 class SuggestionRequest(BaseModel):
@@ -35,8 +41,10 @@ async def init():
     Return the first Groq-generated question.
     """
     try:
-        question = get_question()
-        return {"question": question}
+        session_id = str(uuid4())
+        sessions[session_id] = {"recipient_context": {}, "question_stack": []}
+        question = get_question(session_id)
+        return {"question": question, "session_id": session_id}
     except Exception as e:
         return {"error": str(e)}
 
@@ -44,7 +52,8 @@ async def init():
 @app.post("/submit")
 async def submit(req: SubmitRequest):
     try:
-        key = get_ans(req.ans)
+        print("🔍 /submit received ans:", req.ans)
+        key = get_ans(req.ans, req.session_id)
         return {"status": "ok", "key": key}
     except Exception as e:
         print("❌ Error in /submit:", str(e))  # <--- add this line
@@ -52,19 +61,19 @@ async def submit(req: SubmitRequest):
 
 
 @app.get("/next")
-async def next_question():
+async def next_question(session_id: str):
     """
     Return the next question.
     """
     try:
-        question = get_question()
+        question = get_question(session_id)
         return {"question": question}
     except Exception as e:
         return {"error": str(e)}
 
 
 @app.get("/suggestion")
-async def suggestion(query: str = "", k: int = 5):
+async def suggestion(session_id: str, query: str = "", k: int = 5):
     """
     Return suggestions using get_top_chunks().
     """
@@ -74,26 +83,29 @@ async def suggestion(query: str = "", k: int = 5):
         else:
             # Try to use the current context as a query if query is not provided
             from main import format_final_prompt
-            prompt = format_final_prompt()
+            prompt = format_final_prompt(session_id)
             chunks = get_top_chunks(prompt, k=k)
+        # Clean up session
+        sessions.pop(session_id, None)
         return {"suggestions": chunks}
     except Exception as e:
         return {"error": str(e)}
 
 
 @app.get("/context")
-async def context():
+async def context(session_id: str):
     """
     Return recipient_context and question_stack.
     """
     try:
+        data = sessions.get(session_id, {})
         # Convert question_stack (list of tuples) to a serializable form
         stack_serializable = [
             {"key": key, "question": question, "answer": answer}
-            for (key, question, answer) in question_stack
+            for (key, question, answer) in data.get("question_stack", [])
         ]
         return {
-            "recipient_context": recipient_context,
+            "recipient_context": data.get("recipient_context", {}),
             "question_stack": stack_serializable
         }
     except Exception as e:
@@ -102,12 +114,12 @@ async def context():
 
 # Add endpoint for going back to previous question
 @app.get("/back")
-async def back():
+async def back(session_id: str):
     """
     Go back to the previous question.
     """
     try:
-        result = go_back()
+        result = go_back(session_id)
         return {"status": "ok", "result": result}
     except Exception as e:
         return {"error": str(e)}

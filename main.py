@@ -288,13 +288,10 @@ client = QdrantClient(
 
 
 
-recipient_context = {}
+# Session management for multi-user support
+from typing import Dict, Any
 
-# Stack to track question and answer history for backtracking
-question_stack = []
-
-only_questions = []
-current_question_index = 0
+sessions: Dict[str, Dict[str, Any]] = {}
 # Import necessary libraries
 
 
@@ -302,14 +299,8 @@ import re
 # Track the current question index for sequential question generation
 current_question_index = 0
 
-def ask(question):
-    """
-    Generate a natural language question prompt, and either ask for input via CLI or accept an external answer.
-    """
-    global recipient_context, question_stack
-    # Build a one-paragraph natural question based on recipient context
+def ask(recipient_context, question):
     context_summary = "\n".join([f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in recipient_context.items()])
-    
     custom_prompt = (
         "You're a thoughtful, emotionally attuned assistant helping someone choose a meaningful experience gift. "
         "Rewrite the given question into an engaging, natural-sounding form that adds a subtle emotional depth. "
@@ -321,84 +312,47 @@ def ask(question):
         f"Original question: '{question}'\nContext:\n{context_summary}\n"
         "Output only the rewritten question. No extra remarks or formatting."
     )
-
     try:
-        final_question = query_groq([{"role": "user", "content": (custom_prompt)}])
+        return query_groq([{"role": "user", "content": custom_prompt}])
     except Exception as e:
         print("❌ AI Question Generation Error:", e)
-        final_question = question  # fallback
-        
-    # ans = input(f"❓ {final_question}\n> ")
-        
+        return question
 
-    return final_question
-
-def get_ans(ans):
-    """
-    Get an answer from the user or an external source, and store it in recipient_context.
-    """
-    global current_question_index, questions_alternatives
-    if current_question_index > len(questions_alternatives):
+def get_ans(session_id, ans):
+    session = sessions.get(session_id)
+    if not session or session["current_question_index"] >= len(questions_alternatives):
         return None
-
-    # Get the next question based on the current index
-    # Store the answer in recipient_context and question_stack
-    
-    # key = submit_answer(question_stack.peek(), ans)
-    # print(only_questions[current_question_index])
-    # print(current_question_index)
-    key = submit_answer(only_questions[current_question_index], ans)
-    
-    # Increment the question index for the next call
-    current_question_index += 1
+    key = submit_answer(session_id, session["only_questions"][session["current_question_index"]], ans)
+    session["current_question_index"] += 1
     return key
 
-def get_next_question():
-    """
-    Generate the next question for the user based on the current_question_index and recipient_context.
-    """
-    global current_question_index, questions_alternatives
-    if current_question_index >= len(questions_alternatives):
+def get_next_question(session_id):
+    session = sessions[session_id]
+    if session["current_question_index"] >= len(questions_alternatives):
         return None
-    alternatives = questions_alternatives[current_question_index]
     import random
-    que = random.choice(alternatives)
-    # question_stack.add(que)
-    only_questions.append(que)
-    # print(only_questions)
-    # print(que)
+    que = random.choice(questions_alternatives[session["current_question_index"]])
+    session["only_questions"].append(que)
     return que
      
 
-# Store an answer for a given question, updating context and stack
-def submit_answer(question, answer):
-    """
-    Store the answer for the given question in recipient_context and question_stack.
-    """
-    global recipient_context, question_stack
-    # print(f"Storing answer for question: {question} with answer: {answer}")
+def submit_answer(session_id, question, answer):
+    session = sessions[session_id]
     safe_q = re.sub(r'[^\w\s]', '', question).strip().lower()
-    print(f"Safe question for key generation: {safe_q}")
-    # key = '_'.join(safe_q.split())[:40]
     key = safe_q.replace(' ', '_')
-    # print(f"Generated key for context: {key}")
-    recipient_context[key] = answer
-    question_stack.append((key, question, answer))
+    session["recipient_context"][key] = answer
+    session["question_stack"].append((key, question, answer))
     return key
 
-def go_back():
-    """Go back to the previous question by removing the last entry from recipient_context and question_stack."""
-    if not question_stack:
-        print("No previous question to go back to.")
+def go_back(session_id):
+    session = sessions[session_id]
+    if not session["question_stack"]:
         return {"error": "No previous question to go back to."}
-    global current_question_index
-    current_question_index -= 1
-    key, question, answer = question_stack.pop()
-    if key in recipient_context:
-        del recipient_context[key]
-    if only_questions:
-        only_questions.pop()
-    return 
+    session["current_question_index"] -= 1
+    key, _, _ = session["question_stack"].pop()
+    session["recipient_context"].pop(key, None)
+    session["only_questions"].pop()
+    return
 
 import random
 
@@ -419,60 +373,44 @@ questions_alternatives = [
 ]
 
 # first question and continuation function
-def get_question():
-    global current_question_index, only_questions
+def get_question(session_id):
+    session = sessions.setdefault(session_id, {
+        "recipient_context": {},
+        "question_stack": [],
+        "only_questions": [],
+        "current_question_index": 0
+    })
 
-    # If user is at a new question
-    if current_question_index == len(only_questions):
-        que = get_next_question()  # This will append to only_questions
+    if session["current_question_index"] == len(session["only_questions"]):
+        que = get_next_question(session_id)
     else:
-        que = only_questions[current_question_index]  # Re-ask the current question
+        que = session["only_questions"][session["current_question_index"]]
 
-    return ask(que)
+    return ask(session["recipient_context"], que)
 
-def format_final_prompt():
-    """Extract only the values from recipient_context and format them as a comma-separated string."""
-    # prompt = "You are a creative and thoughtful assistant helping someone choose a unique experience gift. Based on the following details, suggest one highly relevant experience with a short reason:\n\n"
-    prompt = ""
-
-    # Extract only the values from recipient_context, excluding recipient name but including location
+def format_final_prompt(session_id):
+    session = sessions[session_id]
     values = []
-    for key, value in recipient_context.items():
-        print(key)
-        print(value)
-        if value and str(value).strip():  # Only add non-empty values
-            # Skip keys that contain recipient name, but preserve location/city information
-            if 'name' in key.lower() and 'city' not in key.lower() and 'location' not in key.lower():
+
+    for key, value in session["recipient_context"].items():
+        if value and str(value).strip():
+            if 'name' in key and 'city' not in key and 'location' not in key:
                 continue
-            if 'recipient' in key.lower() and 'city' not in key.lower() and 'location' not in key.lower():
-                continue
-            
-            clean_value = str(value).strip()
-            # Remove $ sign and extra formatting if present
-            if clean_value.startswith('$'):
-                clean_value = clean_value[1:]
-            values.append(clean_value)
-    
-    # Join values with commas
-    if values:
-        prompt += f"{', '.join(values)}\n"
-    else:
-        prompt += "No specific details provided.\n"
-    
-    # prompt += "\nKeep it concise but vivid."
-    return prompt
+            values.append(str(value).strip().lstrip('$'))
+
+    return ", ".join(values) if values else "No specific details provided."
 
 
 
-def follow_up_chat():
+def follow_up_chat(session_id):
+    session = sessions[session_id]
     print("🗨️ You can now ask any follow-up questions about the gift or recipient. Type 'exit' to end.")
     while True:
         user_q = input("> ")
         if user_q.strip().lower() in ["exit", "quit"]:
             print("👋 Thanks for using the gifting assistant. Happy gifting!")
             break
-        # Add context memory
-        context = "\n".join([f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in recipient_context.items()])
+        context = "\n".join([f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in session["recipient_context"].items()])
         messages = [{"role": "user", "content": f"Here is what we know about the recipient:\n{context}\nUser question: {user_q}"}]
         try:
             answer = query_groq(messages)
@@ -481,55 +419,32 @@ def follow_up_chat():
             print("❌ Error:", e)
 
 def run_this():
-    global current_question_index
-    # while(current_question_index < len(questions_alternatives)):
-    #    quep = get_question()
-    #    print(quep)
-    #    ans = input(f"❓ {only_questions[current_question_index-1]}\n> ")
-    #    if(ans == "back"):
-    #           print("Going back to the previous question...")
-    #           go_back()
-    #           continue
-    #    else:
-    #          get_ans(ans)
-    while(current_question_index < len(questions_alternatives)):
-        if current_question_index == len(only_questions):
-                quep = get_question()
+    import uuid
+    session_id = str(uuid.uuid4())
+    # initialize session
+    sessions[session_id] = {
+        "recipient_context": {},
+        "question_stack": [],
+        "only_questions": [],
+        "current_question_index": 0
+    }
+    session = sessions[session_id]
+    while session["current_question_index"] < len(questions_alternatives):
+        if session["current_question_index"] == len(session["only_questions"]):
+            quep = get_question(session_id)
         else:
-            quep = ask(only_questions[current_question_index])  # re-ask same question if backtracked
-
+            quep = ask(session["recipient_context"], session["only_questions"][session["current_question_index"]])
         print(quep)
-        ans = input(f"❓ {only_questions[current_question_index]}\n> ")
-
+        ans = input(f"❓ {session['only_questions'][session['current_question_index']]}\n> ")
         if ans.lower() == "back":
             print("Going back to the previous question...")
-            go_back()
+            go_back(session_id)
             continue
         else:
-            get_ans(ans)
-            # print(recipient_context)
-            # print(recipient_context.keys())
-            # print(question_stack)
-            # print("Question stack:", question_stack)
-            # print("Current question index:", current_question_index)
-        
-        # print(recipient_context)
-        # print(recipient_context.keys())
-        # print("Current question index:", current_question_index)
-
-    final_prompt = format_final_prompt()
-    # print("\n🎯 Based on your answers, here's the final prompt for the AI:\n")
+            get_ans(session_id, ans)
+    final_prompt = format_final_prompt(session_id)
     print("this is final prompt")
     print(final_prompt)
-    
-    # print("\n💡 Now let's see what unique experience gift the AI suggests...")
-    # print(final_prompt)
-    # try:
-    #     ai_suggestion = query_groq([{"role": "user", "content": final_prompt}])
-    #     print("🤖 AI Suggestion:", ai_suggestion)
-    # except Exception as e:
-    #     print("❌ AI Suggestion Error:", e)
-        
     chunks = get_top_chunks(final_prompt, k=12)
     if chunks:
         print("\n🔍 Here are some relevant experience options based on your context:")
@@ -539,8 +454,11 @@ def run_this():
     else:
         print("❌ No relevant experience options found.")
     print("\n🎉 Gift experience suggestion complete! You can now ask follow-up questions or go back to previous questions.")
+    # Optionally clean up session
+    cleanup_session(session_id)
 
-    # follow_up_chat()
+def cleanup_session(session_id):
+    sessions.pop(session_id, None)
 
 if __name__ == "__main__":
     run_this()
