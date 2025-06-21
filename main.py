@@ -79,7 +79,7 @@ def get_top_chunks(query, k=5):
     search_limit = k * 5 if (user_budget or user_location) else k
     
     results = client.query_points(
-        collection_name="dragv8_bot",
+        collection_name="dragv9_bot",
         query=query_vector,
         limit=search_limit,
         with_payload=True
@@ -276,7 +276,7 @@ EMBEDDING_MODEL = "embed model name"  # Azure OpenAI embedding deployment
 
 QDRANT_HOST = os.getenv("QDRANT-URL")  # e.g., "https://YOUR-QDRANT-URL
 QDRANT_API_KEY = os.getenv("QDRANT_API")
-COLLECTION = "dragv8_bot"
+COLLECTION = "dragv9_bot"
 
 # Use environment variable for completion model name, fallback to default
 COMPLETION_MODEL_NAME = os.getenv("COMPLETION_MODEL_NAME", "gpt-4o-mini")
@@ -309,15 +309,17 @@ def ask(question):
     global recipient_context, question_stack
     # Build a one-paragraph natural question based on recipient context
     context_summary = "\n".join([f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in recipient_context.items()])
-     
+    
     custom_prompt = (
-        "You are a warm and creative assistant helping someone choose a thoughtful experience gift. "
-        "You will rewrite the given question as a natural ,engaging prompt for the user and also respond warmly with 1 short sentence that shows understanding . "
-        "IMPORTANT: Do NOT answer the question, do NOT add any explanations, introductions, or phrases like "
-        "'Here's your rewritten prompt:' or 'That's a great question!'. "
-        "Return ONLY the rewritten question prompt, with 40–60 words (2–3 sentences) in a single paragraph, based on the context below. "
+        "You're a thoughtful, emotionally attuned assistant helping someone choose a meaningful experience gift. "
+        "Rewrite the given question into an engaging, natural-sounding form that adds a subtle emotional depth. "
+        "Maintain clarity while evoking curiosity or empathy—create a warm tone that invites sharing. "
+        "Avoid robotic structure, placeholders, or fabricated details (e.g., names, cities). "
+        "Don't say things like 'here’s your question' or 'tell me about…'. Instead, rephrase as an elegant, standalone prompt. "
+        "Use the real context if available to shape the phrasing. The result should feel like something you'd hear from a well-trained, sensitive concierge. "
+        "Two sentences max, up to 60 words total. Output only the rewritten question. "
         f"Original question: '{question}'\nContext:\n{context_summary}\n"
-        "Make it concise, friendly, and conversational."
+        "Output only the rewritten question. No extra remarks or formatting."
     )
 
     try:
@@ -343,8 +345,8 @@ def get_ans(ans):
     # Store the answer in recipient_context and question_stack
     
     # key = submit_answer(question_stack.peek(), ans)
-    print(only_questions[current_question_index])
-    print(current_question_index)
+    # print(only_questions[current_question_index])
+    # print(current_question_index)
     key = submit_answer(only_questions[current_question_index], ans)
     
     # Increment the question index for the next call
@@ -363,8 +365,8 @@ def get_next_question():
     que = random.choice(alternatives)
     # question_stack.add(que)
     only_questions.append(que)
-    print(only_questions)
-    print(que)
+    # print(only_questions)
+    # print(que)
     return que
      
 
@@ -374,12 +376,12 @@ def submit_answer(question, answer):
     Store the answer for the given question in recipient_context and question_stack.
     """
     global recipient_context, question_stack
-    print(f"Storing answer for question: {question} with answer: {answer}")
+    # print(f"Storing answer for question: {question} with answer: {answer}")
     safe_q = re.sub(r'[^\w\s]', '', question).strip().lower()
     print(f"Safe question for key generation: {safe_q}")
     # key = '_'.join(safe_q.split())[:40]
     key = safe_q.replace(' ', '_')
-    print(f"Generated key for context: {key}")
+    # print(f"Generated key for context: {key}")
     recipient_context[key] = answer
     question_stack.append((key, question, answer))
     return key
@@ -505,12 +507,11 @@ def run_this():
             continue
         else:
             get_ans(ans)
-            # current_question_index += 1
-            print(recipient_context)
-            print(recipient_context.keys())
-            print(question_stack)
-            print("Question stack:", question_stack)
-            print("Current question index:", current_question_index)
+            # print(recipient_context)
+            # print(recipient_context.keys())
+            # print(question_stack)
+            # print("Question stack:", question_stack)
+            # print("Current question index:", current_question_index)
         
         # print(recipient_context)
         # print(recipient_context.keys())
