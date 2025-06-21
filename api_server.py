@@ -1,12 +1,12 @@
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Any, Dict
-from main import get_question, get_ans, get_top_chunks, go_back, reset_session
+from main import get_question, get_ans, get_top_chunks, go_back, reset_session, sessions
 
 # from uuid import uuid4
 
 # Session-aware storage
-sessions: Dict[str, Dict[str, Any]] = {}
+# sessions: Dict[str, Dict[str, Any]] = {}
 session_counter = 1
 
 app = FastAPI()

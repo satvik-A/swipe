@@ -320,6 +320,9 @@ def ask(recipient_context, question):
 
 def get_ans(session_id, ans):
     session = sessions.get(session_id)
+    print(f"🔍 Processing answer for session {session_id}: {ans}")
+    if session:
+        print("📦 Current session state:", session)
     # if not session:
     #     print("⚠️ No session found for:", session_id)
     #     return None
@@ -339,7 +342,6 @@ def get_next_question(session_id):
         return None
     import random
     que = random.choice(questions_alternatives[session["current_question_index"]])
-    session["only_questions"].append(que)
     return que
      
 
@@ -387,16 +389,19 @@ def get_question(session_id):
         "only_questions": [],
         "current_question_index": 0
     })
+    print(f"📦 Initializing question for session {session_id}")
 
     if session["current_question_index"] == len(session["only_questions"]):
         que = get_next_question(session_id)
+        print(f"🧠 New question generated: {que}")
+        session["only_questions"].append(que)
+        print(f"✅ Question added to session {session_id}")
     else:
         que = session["only_questions"][session["current_question_index"]]
+        print(f"🔁 Reusing existing question: {que}")
 
-    # ✅ Ensure the question is stored before calling ask
-    if len(session["only_questions"]) <= session["current_question_index"]:
-        session["only_questions"].append(que)
-
+    print(f"📤 Returning question for session {session_id}: {que}")
+    print(f"📦 Current session state: {session}")
     return ask(session["recipient_context"], que)
 
 def format_final_prompt(session_id):
