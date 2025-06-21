@@ -320,8 +320,15 @@ def ask(recipient_context, question):
 
 def get_ans(session_id, ans):
     session = sessions.get(session_id)
-    if not session or session["current_question_index"] >= len(questions_alternatives):
+    # if not session:
+    #     print("⚠️ No session found for:", session_id)
+    #     return None
+    if session["current_question_index"] >= len(questions_alternatives):
+        print("⚠️ All questions answered.")
         return None
+
+    print(f"✅ Submitting answer for Q{session['current_question_index']}: {ans}")
+    print("🧾 Current question:", session['only_questions'][session['current_question_index']])
     key = submit_answer(session_id, session["only_questions"][session["current_question_index"]], ans)
     session["current_question_index"] += 1
     return key
@@ -385,6 +392,10 @@ def get_question(session_id):
         que = get_next_question(session_id)
     else:
         que = session["only_questions"][session["current_question_index"]]
+
+    # ✅ Ensure the question is stored before calling ask
+    if len(session["only_questions"]) <= session["current_question_index"]:
+        session["only_questions"].append(que)
 
     return ask(session["recipient_context"], que)
 
@@ -459,6 +470,20 @@ def run_this():
 
 def cleanup_session(session_id):
     sessions.pop(session_id, None)
+
+
+# ---------------------------------------
+# Reset session utility for API endpoint
+# ---------------------------------------
+def reset_session(session_id: str):
+    """Reset all progress for a given session ID."""
+    sessions[session_id] = {
+        "recipient_context": {},
+        "question_stack": [],
+        "only_questions": [],
+        "current_question_index": 0
+    }
+    return {"status": "ok", "message": f"Session {session_id} has been reset."}
 
 if __name__ == "__main__":
     run_this()

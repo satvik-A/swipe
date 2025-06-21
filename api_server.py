@@ -1,12 +1,13 @@
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Any, Dict
-from main import get_question, get_ans, get_top_chunks, recipient_context, question_stack, go_back
+from main import get_question, get_ans, get_top_chunks, go_back, reset_session
 
-from uuid import uuid4
+# from uuid import uuid4
 
 # Session-aware storage
 sessions: Dict[str, Dict[str, Any]] = {}
+session_counter = 1
 
 app = FastAPI()
 
@@ -41,8 +42,15 @@ async def init():
     Return the first Groq-generated question.
     """
     try:
-        session_id = str(uuid4())
-        sessions[session_id] = {"recipient_context": {}, "question_stack": []}
+        global session_counter
+        session_id = str(session_counter)
+        session_counter += 1
+        sessions[session_id] = {
+            "recipient_context": {},
+            "question_stack": [],
+            "only_questions": [],
+            "current_question_index": 0
+        }
         question = get_question(session_id)
         return {"question": question, "session_id": session_id}
     except Exception as e:
@@ -98,6 +106,8 @@ async def context(session_id: str):
     Return recipient_context and question_stack.
     """
     try:
+        if session_id not in sessions:
+            return {"error": "Session not found"}
         data = sessions.get(session_id, {})
         # Convert question_stack (list of tuples) to a serializable form
         stack_serializable = [
@@ -121,6 +131,45 @@ async def back(session_id: str):
     try:
         result = go_back(session_id)
         return {"status": "ok", "result": result}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# Endpoint for resetting a session
+@app.get("/reset")
+async def reset(session_id: str):
+    """
+    Reset all progress and start fresh for a given session ID.
+    """
+    try:
+        result = reset_session(session_id)
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+
+# Clear all session data
+@app.get("/clear-all")
+async def clear_all_sessions():
+    """
+    Clear all stored session data.
+    """
+    try:
+        sessions.clear()
+        return {"status": "ok", "message": "All sessions have been cleared."}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# Endpoint to view all current sessions
+@app.get("/sessions")
+async def list_sessions():
+    """
+    List all active session IDs and their data.
+    """
+    try:
+        return {"sessions": sessions}
     except Exception as e:
         return {"error": str(e)}
 
