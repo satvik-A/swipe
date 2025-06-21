@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins by default
+    # allow_origins=["*"],  # Allow all origins by default
     # You can specify specific origins if needed
     allow_origins=[
         "http://localhost:8080",  # local development
