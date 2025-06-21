@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Any, Dict
-from main import get_question, get_ans, get_top_chunks, recipient_context, question_stack, go_back
+from main import get_question, get_ans, get_top_chunks, recipient_context, question_stack, go_back, reset_all
 
 app = FastAPI()
 
@@ -111,6 +111,18 @@ async def back():
         return {"status": "ok", "result": result}
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.get("/reset")
+async def reset():
+    """
+    Reset all stored context and start fresh.
+    """
+    try:
+        reset_all()
+        return {"status": "ok", "message": "Session reset successfully."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 # FastAPI startup event logger
