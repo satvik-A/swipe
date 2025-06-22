@@ -490,5 +490,21 @@ def reset_session(session_id: str):
     }
     return {"status": "ok", "message": f"Session {session_id} has been reset."}
 
+
+# ---------------------------------------
+# Clear all sessions utility for API endpoint
+# ---------------------------------------
+def clear_all_sessions():
+    """Clear all session data."""
+    sessions.clear()
+    return {"status": "ok", "message": "All sessions cleared."}
+
+
+# ---------------------------------------
+# Get all sessions utility
+# ---------------------------------------
+def get_all_sessions():
+    return sessions
+
 if __name__ == "__main__":
     run_this()

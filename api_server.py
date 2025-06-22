@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Any, Dict
 from main import get_question, get_ans, get_top_chunks, go_back, reset_session, sessions
+from main import clear_all_sessions, get_all_sessions
 
 # from uuid import uuid4
 
@@ -45,12 +46,12 @@ async def init():
         global session_counter
         session_id = str(session_counter)
         session_counter += 1
-        sessions[session_id] = {
-            "recipient_context": {},
-            "question_stack": [],
-            "only_questions": [],
-            "current_question_index": 0
-        }
+        # sessions[session_id] = {
+        #     "recipient_context": {},
+        #     "question_stack": [],
+        #     "only_questions": [],
+        #     "current_question_index": 0
+        # }
         question = get_question(session_id)
         return {"question": question, "session_id": session_id}
     except Exception as e:
@@ -61,10 +62,16 @@ async def init():
 async def submit(req: SubmitRequest):
     try:
         print("🔍 /submit received ans:", req.ans)
+        session_data = sessions.get(req.session_id)
+        print(f"📦 Current session data for ID {req.session_id}:", session_data)
+        if session_data is None:
+            raise ValueError(f"Session {req.session_id} not found. Available sessions: {list(sessions.keys())}")
         key = get_ans(req.ans, req.session_id)
         return {"status": "ok", "key": key}
     except Exception as e:
-        print("❌ Error in /submit:", str(e))  # <--- add this line
+        import traceback
+        print("❌ Error in /submit:", str(e))
+        traceback.print_exc()
         return {"status": "error", "message": str(e)}
 
 
@@ -156,7 +163,7 @@ async def clear_all_sessions():
     Clear all stored session data.
     """
     try:
-        sessions.clear()
+        clear_all_sessions()
         return {"status": "ok", "message": "All sessions have been cleared."}
     except Exception as e:
         return {"error": str(e)}
@@ -169,7 +176,7 @@ async def list_sessions():
     List all active session IDs and their data.
     """
     try:
-        return {"sessions": sessions}
+        return {"sessions": get_all_sessions()}
     except Exception as e:
         return {"error": str(e)}
 
