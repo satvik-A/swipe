@@ -66,7 +66,7 @@ async def submit(req: SubmitRequest):
         print(f"📦 Current session data for ID {req.session_id}:", session_data)
         if session_data is None:
             raise ValueError(f"Session {req.session_id} not found. Available sessions: {list(sessions.keys())}")
-        key = get_ans(req.ans, req.session_id)
+        key = get_ans(req.session_id, req.ans)
         return {"status": "ok", "key": key}
     except Exception as e:
         import traceback
@@ -81,6 +81,8 @@ async def next_question(session_id: str):
     Return the next question.
     """
     try:
+        if session_id not in sessions:
+            return {"error": f"Session {session_id} not found"}
         question = get_question(session_id)
         return {"question": question}
     except Exception as e:
@@ -100,8 +102,9 @@ async def suggestion(session_id: str, query: str = "", k: int = 5):
             from main import format_final_prompt
             prompt = format_final_prompt(session_id)
             chunks = get_top_chunks(prompt, k=k)
-        # Clean up session
-        sessions.pop(session_id, None)
+        # Clean up session after suggestions are provided
+        if session_id in sessions:
+            sessions.pop(session_id, None)
         return {"suggestions": chunks}
     except Exception as e:
         return {"error": str(e)}
@@ -136,6 +139,8 @@ async def back(session_id: str):
     Go back to the previous question.
     """
     try:
+        if session_id not in sessions:
+            return {"error": f"Session {session_id} not found"}
         result = go_back(session_id)
         return {"status": "ok", "result": result}
     except Exception as e:

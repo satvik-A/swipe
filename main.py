@@ -297,7 +297,7 @@ sessions: Dict[str, Dict[str, Any]] = {}
 
 import re
 # Track the current question index for sequential question generation
-current_question_index = 0
+# current_question_index = 0
 
 def ask(recipient_context, question):
     context_summary = "\n".join([f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in recipient_context.items()])
@@ -323,9 +323,9 @@ def get_ans(session_id, ans):
     print(f"🔍 Processing answer for session {session_id}: {ans}")
     if session:
         print("📦 Current session state:", session)
-    # if not session:
-    #     print("⚠️ No session found for:", session_id)
-    #     return None
+    if not session:
+        print("⚠️ No session found for:", session_id)
+        return None
     if session["current_question_index"] >= len(questions_alternatives):
         print("⚠️ All questions answered.")
         return None
@@ -337,7 +337,11 @@ def get_ans(session_id, ans):
     return key
 
 def get_next_question(session_id):
-    session = sessions[session_id]
+    session = sessions.get(session_id)
+    if not session:
+        print(f"⚠️ No session found for: {session_id}")
+        return None
+
     if session["current_question_index"] >= len(questions_alternatives):
         return None
     import random
@@ -346,7 +350,11 @@ def get_next_question(session_id):
      
 
 def submit_answer(session_id, question, answer):
-    session = sessions[session_id]
+    session = sessions.get(session_id)
+    if not session:
+        print(f"⚠️ No session found for: {session_id}")
+        return None
+        
     safe_q = re.sub(r'[^\w\s]', '', question).strip().lower()
     key = safe_q.replace(' ', '_')
     session["recipient_context"][key] = answer
@@ -354,7 +362,10 @@ def submit_answer(session_id, question, answer):
     return key
 
 def go_back(session_id):
-    session = sessions[session_id]
+    session = sessions.get(session_id)
+    if not session:
+        return {"error": f"No session found for: {session_id}"}
+        
     if not session["question_stack"]:
         return {"error": "No previous question to go back to."}
     session["current_question_index"] -= 1
@@ -405,7 +416,11 @@ def get_question(session_id):
     return ask(session["recipient_context"], que)
 
 def format_final_prompt(session_id):
-    session = sessions[session_id]
+    session = sessions.get(session_id)
+    if not session:
+        print(f"⚠️ No session found for: {session_id}")
+        return "No specific details provided."
+        
     values = []
 
     for key, value in session["recipient_context"].items():
@@ -419,7 +434,11 @@ def format_final_prompt(session_id):
 
 
 def follow_up_chat(session_id):
-    session = sessions[session_id]
+    session = sessions.get(session_id)
+    if not session:
+        print(f"⚠️ No session found for: {session_id}")
+        return
+        
     print("🗨️ You can now ask any follow-up questions about the gift or recipient. Type 'exit' to end.")
     while True:
         user_q = input("> ")
