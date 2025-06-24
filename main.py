@@ -4,13 +4,51 @@ import os
 
 from tools import query_groq
 from dotenv import load_dotenv
+load_dotenv()
+
+# --- Supabase session persistence ---
+import supabase
+from supabase import create_client
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Save session to Supabase
+def save_session_to_db(session_id):
+    session = sessions.get(session_id)
+    if not session:
+        return
+    supabase_client.table("sessions").upsert({
+        "id": session_id,
+        "current_question_index": session["current_question_index"],
+        "recipient_context": session["recipient_context"],
+        "only_questions": session["only_questions"],
+        "question_stack": session["question_stack"],
+    }).execute()
+    
+    
+def save_all_sessions_to_db():
+    for session_id in sessions.keys():
+        save_session_to_db(session_id)
+        
+def load_all_sessions_from_db():
+    response = supabase_client.table("sessions").select("*").execute()
+    if response.data:
+        for row in response.data:
+            sessions[row["id"]] = {
+                "current_question_index": row.get("current_question_index", 0),
+                "recipient_context": row.get("recipient_context", {}),
+                "only_questions": row.get("only_questions", []),
+                "question_stack": row.get("question_stack", [])
+            }
 
 #Environment variables
 load_dotenv(override=True)
 Azure_OpenAI = os.getenv("Azure_OpenAI")
 Azure_link = os.getenv("Azure_link")
 QDRANT_API_KEY = os.getenv("QDRANT_API")
-QDRANT_HOST = os.getenv("QDRANT-URL")
+QDRANT_HOST = os.getenv("QDRANT_URL")
 
 # Fallback validation for critical .env variables
 
@@ -36,10 +74,6 @@ from openai import AzureOpenAI
 # )
 
 
-client = QdrantClient(
-    url=QDRANT_HOST,
-    api_key=QDRANT_API_KEY
-)
 
 embedding_client = AzureOpenAI(
     api_key=Azure_OpenAI,
@@ -274,7 +308,7 @@ def generate_answer(query, chunks):
 EMBEDDING_MODEL = "embed model name"  # Azure OpenAI embedding deployment
 # COMPLETION_MODEL = "ychat completion model name (response model)"       # Azure OpenAI completion deployment
 
-QDRANT_HOST = os.getenv("QDRANT-URL")  # e.g., "https://YOUR-QDRANT-URL
+QDRANT_HOST = os.getenv("QDRANT_URL")  # e.g., "https://YOUR-QDRANT-URL
 QDRANT_API_KEY = os.getenv("QDRANT_API")
 COLLECTION = "dragv9_bot"
 
@@ -334,6 +368,7 @@ def get_ans(session_id, ans):
     print("🧾 Current question:", session['only_questions'][session['current_question_index']])
     key = submit_answer(session_id, session["only_questions"][session["current_question_index"]], ans)
     session["current_question_index"] += 1
+    save_session_to_db(session_id)
     return key
 
 def get_next_question(session_id):
@@ -372,6 +407,7 @@ def go_back(session_id):
     key, _, _ = session["question_stack"].pop()
     session["recipient_context"].pop(key, None)
     session["only_questions"].pop()
+    save_session_to_db(session_id)
     return
 
 import random
@@ -413,6 +449,7 @@ def get_question(session_id):
 
     print(f"📤 Returning question for session {session_id}: {que}")
     print(f"📦 Current session state: {session}")
+    save_session_to_db(session_id)
     return ask(session["recipient_context"], que)
 
 def format_final_prompt(session_id):
@@ -453,6 +490,44 @@ def follow_up_chat(session_id):
         except Exception as e:
             print("❌ Error:", e)
 
+
+
+def cleanup_session(session_id):
+    sessions.pop(session_id, None)
+
+
+# ---------------------------------------
+# Reset session utility for API endpoint
+# ---------------------------------------
+def reset_session(session_id: str):
+    """Reset all progress for a given session ID."""
+    sessions[session_id] = {
+        "recipient_context": {},
+        "question_stack": [],
+        "only_questions": [],
+        "current_question_index": 0
+    }
+    save_session_to_db(session_id)
+    return {"status": "ok", "message": f"Session {session_id} has been reset."}
+
+
+# ---------------------------------------
+# Clear all sessions utility for API endpoint
+# ---------------------------------------
+def clear_all_sessions():
+    """Clear all session data."""
+    sessions.clear()
+    # NOTE: Optional: truncate Supabase session table
+    supabase_client.table("sessions").delete().neq("id", "").execute()
+    return {"status": "ok", "message": "All sessions cleared."}
+
+
+# ---------------------------------------
+# Get all sessions utility
+# ---------------------------------------
+def get_all_sessions():
+    return sessions
+
 def run_this():
     import uuid
     session_id = str(uuid.uuid4())
@@ -492,38 +567,17 @@ def run_this():
     # Optionally clean up session
     cleanup_session(session_id)
 
-def cleanup_session(session_id):
-    sessions.pop(session_id, None)
-
-
-# ---------------------------------------
-# Reset session utility for API endpoint
-# ---------------------------------------
-def reset_session(session_id: str):
-    """Reset all progress for a given session ID."""
-    sessions[session_id] = {
-        "recipient_context": {},
-        "question_stack": [],
-        "only_questions": [],
-        "current_question_index": 0
-    }
-    return {"status": "ok", "message": f"Session {session_id} has been reset."}
-
-
-# ---------------------------------------
-# Clear all sessions utility for API endpoint
-# ---------------------------------------
-def clear_all_sessions():
-    """Clear all session data."""
-    sessions.clear()
-    return {"status": "ok", "message": "All sessions cleared."}
-
-
-# ---------------------------------------
-# Get all sessions utility
-# ---------------------------------------
-def get_all_sessions():
-    return sessions
-
 if __name__ == "__main__":
     run_this()
+# ---------------------------------------
+# Delete specific session from Supabase by session ID
+# ---------------------------------------
+def delete_session_from_db(session_id: str):
+    """Delete a specific session from Supabase using its ID."""
+    try:
+        response = supabase_client.table("sessions").delete().eq("id", session_id).execute()
+        print(f"🗑️ Deleted session {session_id} from Supabase.")
+        return {"status": "ok", "message": f"Session {session_id} deleted from Supabase."}
+    except Exception as e:
+        print(f"❌ Error deleting session {session_id}: {e}")
+        return {"status": "error", "message": f"Failed to delete session {session_id}: {e}"}
