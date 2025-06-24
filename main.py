@@ -5,6 +5,7 @@ import os
 from tools import query_groq
 from dotenv import load_dotenv
 load_dotenv()
+load_dotenv(override=True)
 
 # --- Supabase session persistence ---
 import supabase
@@ -50,30 +51,14 @@ Azure_link = os.getenv("Azure_link")
 QDRANT_API_KEY = os.getenv("QDRANT_API")
 QDRANT_HOST = os.getenv("QDRANT_URL")
 
-# Fallback validation for critical .env variables
-
-
-
-
 import csv
 import openai
 import uuid
 from qdrant_client import QdrantClient
 import nltk
 
-# openai.api_type = "azure"
-# openai.api_base = os.getenv("Azure_link")    # e.g., "https://YOUR-RESOURCE.openai.azure.com/"
-# openai.api_key = os.getenv("Azure_OpenAI")          # Your Azure OpenAI Key
-# openai.api_version = ""
+
 from openai import AzureOpenAI
-
-# client = AzureOpenAI(
-#     api_key=os.getenv("Azure_OpenAI"),
-#     azure_endpoint=os.getenv("Azure_link"),
-#     api_version="2023-05-15"  # or the version you have access to
-# )
-
-
 
 embedding_client = AzureOpenAI(
     api_key=Azure_OpenAI,
