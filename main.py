@@ -27,12 +27,11 @@ def save_session_to_db(session_id):
         "only_questions": session["only_questions"],
         "question_stack": session["question_stack"],
     }).execute()
-    
-    
+
 def save_all_sessions_to_db():
     for session_id in sessions.keys():
         save_session_to_db(session_id)
-        
+
 def load_all_sessions_from_db():
     response = supabase_client.table("sessions").select("*").execute()
     if response.data:
@@ -43,6 +42,21 @@ def load_all_sessions_from_db():
                 "only_questions": row.get("only_questions", []),
                 "question_stack": row.get("question_stack", [])
             }
+
+# --- Session persistence timing utility ---
+import time
+from typing import Dict
+
+# Utility to track last saved time
+session_last_saved: Dict[str, float] = {}
+
+def maybe_save_session_to_db(session_id):
+    """Save session if more than X seconds passed since last save"""
+    now = time.time()
+    last_saved = session_last_saved.get(session_id, 0)
+    if now - last_saved > 60:  # e.g., save if more than 60 seconds passed
+        save_session_to_db(session_id)
+        session_last_saved[session_id] = now
 
 #Environment variables
 load_dotenv(override=True)
@@ -353,7 +367,7 @@ def get_ans(session_id, ans):
     print("🧾 Current question:", session['only_questions'][session['current_question_index']])
     key = submit_answer(session_id, session["only_questions"][session["current_question_index"]], ans)
     session["current_question_index"] += 1
-    save_session_to_db(session_id)
+    maybe_save_session_to_db(session_id)
     return key
 
 def get_next_question(session_id):
@@ -366,6 +380,7 @@ def get_next_question(session_id):
         return None
     import random
     que = random.choice(questions_alternatives[session["current_question_index"]])
+    # No session mutation here, so no need to save
     return que
      
 
@@ -374,25 +389,26 @@ def submit_answer(session_id, question, answer):
     if not session:
         print(f"⚠️ No session found for: {session_id}")
         return None
-        
+
     safe_q = re.sub(r'[^\w\s]', '', question).strip().lower()
     key = safe_q.replace(' ', '_')
     session["recipient_context"][key] = answer
     session["question_stack"].append((key, question, answer))
+    maybe_save_session_to_db(session_id)
     return key
 
 def go_back(session_id):
     session = sessions.get(session_id)
     if not session:
         return {"error": f"No session found for: {session_id}"}
-        
+
     if not session["question_stack"]:
         return {"error": "No previous question to go back to."}
     session["current_question_index"] -= 1
     key, _, _ = session["question_stack"].pop()
     session["recipient_context"].pop(key, None)
     session["only_questions"].pop()
-    save_session_to_db(session_id)
+    maybe_save_session_to_db(session_id)
     return
 
 import random
@@ -428,13 +444,14 @@ def get_question(session_id):
         print(f"🧠 New question generated: {que}")
         session["only_questions"].append(que)
         print(f"✅ Question added to session {session_id}")
+        maybe_save_session_to_db(session_id)
     else:
         que = session["only_questions"][session["current_question_index"]]
         print(f"🔁 Reusing existing question: {que}")
 
     print(f"📤 Returning question for session {session_id}: {que}")
     print(f"📦 Current session state: {session}")
-    save_session_to_db(session_id)
+    # No need to save here, as nothing mutated unless new question appended above
     return ask(session["recipient_context"], que)
 
 def format_final_prompt(session_id):
@@ -492,7 +509,7 @@ def reset_session(session_id: str):
         "only_questions": [],
         "current_question_index": 0
     }
-    save_session_to_db(session_id)
+    maybe_save_session_to_db(session_id)
     return {"status": "ok", "message": f"Session {session_id} has been reset."}
 
 
