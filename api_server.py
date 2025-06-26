@@ -2,9 +2,9 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Any, Dict
 from main import get_question, get_ans, get_top_chunks, go_back, reset_session, sessions
-from main import clear_all_sessions, get_all_sessions
+from main import clear_all_sessions, get_all_sessions,follow_up_chat
 
-# from uuid import uuid4
+from uuid import uuid4
 
 # Session-aware storage
 # sessions: Dict[str, Dict[str, Any]] = {}
@@ -43,15 +43,17 @@ async def init():
     Return the first Groq-generated question.
     """
     try:
-        global session_counter
-        session_id = str(session_counter)
-        session_counter += 1
+        # global session_counter
+        # session_id = str(session_counter)
+        # session_counter += 1
         # sessions[session_id] = {
         #     "recipient_context": {},
         #     "question_stack": [],
         #     "only_questions": [],
         #     "current_question_index": 0
         # }
+        import uuid
+        session_id = str(uuid.uuid4())
         question = get_question(session_id)
         return {"question": question, "session_id": session_id}
     except Exception as e:
@@ -103,8 +105,8 @@ async def suggestion(session_id: str, query: str = "", k: int = 5):
             prompt = format_final_prompt(session_id)
             chunks = get_top_chunks(prompt, k=k)
         # Clean up session after suggestions are provided
-        if session_id in sessions:
-            sessions.pop(session_id, None)
+        # if session_id in sessions:
+        #     sessions.pop(session_id, None)
         return {"suggestions": chunks}
     except Exception as e:
         return {"error": str(e)}
@@ -182,6 +184,29 @@ async def list_sessions():
     """
     try:
         return {"sessions": get_all_sessions()}
+    except Exception as e:
+        return {"error": str(e)}
+    
+    
+@app.get("/followup")
+async def followup(session_id: str, ans: str = "", k: int = 12):
+    """
+    Return suggestions using get_top_chunks().
+    """
+    if session_id not in sessions:
+            return {"error": f"session {session_id} not found"}
+    try:
+        if ans:
+            chunks = follow_up_chat(session_id,ans,k = 12)
+        else:
+            # Try to use the current context as a query if query is not provided
+            from main import format_final_prompt
+            prompt = format_final_prompt(session_id)
+            chunks = get_top_chunks(prompt, k=k)
+        # Clean up session after suggestions are provided
+        # if session_id in sessions:
+        #     sessions.pop(session_id, None)
+        return {"suggestions": chunks}
     except Exception as e:
         return {"error": str(e)}
 

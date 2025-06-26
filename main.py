@@ -337,7 +337,7 @@ def ask(recipient_context, question):
     custom_prompt = (
         "You're a thoughtful, emotionally attuned assistant helping someone choose a meaningful experience gift. "
         "Rewrite the given question into an engaging, natural-sounding form that adds a subtle emotional depth. "
-        "Maintain clarity while evoking curiosity or empathy—create a warm tone that invites sharing. "
+        "Make the tone friendly and supportive, like a good friend helping someone pick a thoughtful gift. Keep it simple, natural, and kind "
         "Avoid robotic structure, placeholders, or fabricated details (e.g., names, cities). "
         "Don't say things like 'here’s your question' or 'tell me about…'. Instead, rephrase as an elegant, standalone prompt. "
         "Use the real context if available to shape the phrasing. The result should feel like something you'd hear from a well-trained, sensitive concierge. "
@@ -368,6 +368,7 @@ def get_ans(session_id, ans):
     key = submit_answer(session_id, session["only_questions"][session["current_question_index"]], ans)
     session["current_question_index"] += 1
     maybe_save_session_to_db(session_id)
+    print("this is the key ", key)
     return key
 
 def get_next_question(session_id):
@@ -416,16 +417,12 @@ import random
 
 questions_alternatives = [
     [
-        "Tell us about the recipient. What's their name, city, your relationship with them, the occasion, and your budget range?",
+        "Let's get to know the person you're gifting for! What's their name, where do they live, how do you know them, what's the occasion, and about how much are you hoping to spend?",
         "Let's start with some basic information about who you're shopping for. Include their name, location, your relationship, the occasion, and your budget range."
     ],
     [
-        "What are they interested in? List their interests from options like: Adventure, Dining, Wellness, Luxury, Learning, Sports, Arts, Music, Travel, Nature, Technology. Feel free to add any others.",
+        "What kind of experiences would light them up? You can pick from options like adventure, food, wellness, music—or anything else that comes to mind!.",
         "Now let's get into their interests. Choose all that apply from: Adventure, Dining, Wellness, Luxury, Learning, Sports, Arts, Music, Travel, Nature, Technology—or anything else you can think of."
-    ],
-    [
-        "Help us understand their personality. What are some traits or lifestyle habits that define them? Are there any specific preferences we should know?",
-        "Almost done—now tell us about their personality. Include traits, lifestyle details, and any specific preferences that could shape the experience gift."
     ]
 ]
 
@@ -472,25 +469,21 @@ def format_final_prompt(session_id):
 
 
 
-def follow_up_chat(session_id):
+def follow_up_chat(session_id,ans, k=12):
     session = sessions.get(session_id)
     if not session:
         print(f"⚠️ No session found for: {session_id}")
         return
-        
-    print("🗨️ You can now ask any follow-up questions about the gift or recipient. Type 'exit' to end.")
-    while True:
-        user_q = input("> ")
-        if user_q.strip().lower() in ["exit", "quit"]:
-            print("👋 Thanks for using the gifting assistant. Happy gifting!")
-            break
-        context = "\n".join([f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in session["recipient_context"].items()])
-        messages = [{"role": "user", "content": f"Here is what we know about the recipient:\n{context}\nUser question: {user_q}"}]
-        try:
-            answer = query_groq(messages)
-            print("🤖", answer)
-        except Exception as e:
-            print("❌ Error:", e)
+    # user_q = input("> ")
+    # safe_q = re.sub(r'[^\w\s]', '', question).strip().lower()
+    # key = safe_q.replace(' ', '_')
+    key = str(uuid.uuid4())
+    session["recipient_context"][key] = ans
+    # session["question_stack"].append((key, question, answer))
+    prompt = format_final_prompt(session_id)
+    print("final prompt of follow up. \n " + prompt)
+    return get_top_chunks(prompt,k = 12)
+
 
 
 
@@ -567,7 +560,9 @@ def run_this():
         print("❌ No relevant experience options found.")
     print("\n🎉 Gift experience suggestion complete! You can now ask follow-up questions or go back to previous questions.")
     # Optionally clean up session
-    cleanup_session(session_id)
+    while(True):
+        ans = input("ask followup questions to get more chunks \n")
+        print(follow_up_chat(session_id,ans,k = 12))
 
 if __name__ == "__main__":
     run_this()
