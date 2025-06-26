@@ -112,7 +112,7 @@ def get_top_chunks(query, k=5):
     search_limit = k * 5 if (user_budget or user_location) else k
     
     results = client.query_points(
-        collection_name="dragv9_bot",
+        collection_name="dragv10_bot",
         query=query_vector,
         limit=search_limit,
         with_payload=True
@@ -309,7 +309,7 @@ EMBEDDING_MODEL = "embed model name"  # Azure OpenAI embedding deployment
 
 QDRANT_HOST = os.getenv("QDRANT_URL")  # e.g., "https://YOUR-QDRANT-URL
 QDRANT_API_KEY = os.getenv("QDRANT_API")
-COLLECTION = "dragv9_bot"
+COLLECTION = "dragv10_bot"
 
 # Use environment variable for completion model name, fallback to default
 COMPLETION_MODEL_NAME = os.getenv("COMPLETION_MODEL_NAME", "gpt-4o-mini")
