@@ -180,7 +180,7 @@ def get_top_chunks(query, k=5):
                 chunk_price = payload.get("price", float('inf'))
                 chunk_location = payload.get("location", "")
                 chunk_id = payload.get("id", "")
-                csv_id= payload.get("csv_id", "")
+                supabase_id= payload.get("supabase_id", "")
                 title = payload.get("title", "")
                 
                 # Apply filters
@@ -216,7 +216,7 @@ def get_top_chunks(query, k=5):
                 if passes_budget_filter and passes_location_filter:
                     chunks.append({
                         "id": chunk_id,
-                        "csv_id": csv_id,
+                        "supabase_id": supabase_id,
                         "title": title,
                         "price": chunk_price,
                         "location": chunk_location
@@ -339,7 +339,7 @@ def generate_answer(query, chunks):
     # Format chunks with title and price information
     context_parts = []
     for chunk in chunks:
-        context_parts.append(f"Experience: {chunk['title']} (Price: ${chunk['price']:.2f}) [Chunk ID: {chunk['id']}, CSV ID: {chunk['csv_id']}]")
+        context_parts.append(f"Experience: {chunk['title']} (Price: ${chunk['price']:.2f}) [Chunk ID: {chunk['id']}, SUPABASE ID: {chunk['supabase_id']}]")
     
     context = "\n".join(context_parts)
     prompt = f"Context:\n{context}\n\nQuestion: {query}\nAnswer:"
@@ -601,7 +601,7 @@ def run_this():
         print("\n🔍 Here are some relevant experience options based on your context:")
         print(chunks)
         for chunk in chunks:
-            print(f"- {chunk['title']} (Price: ${chunk['price']:.2f}) [CSV ID: {chunk['csv_id']}]")
+            print(f"- {chunk['title']} (Price: ${chunk['price']:.2f}) [SUPABASE ID: {chunk['supabase_id']}]")
     else:
         print("❌ No relevant experience options found.")
     print("\n🎉 Gift experience suggestion complete! You can now ask follow-up questions or go back to previous questions.")
