@@ -92,7 +92,7 @@ async def next_question(session_id: str):
 
 
 @app.get("/suggestion")
-async def suggestion(session_id: str, query: str = "", k: int = 5):
+async def suggestion(session_id: str, query: str = "", k: int = 12):
     """
     Return suggestions using get_top_chunks().
     """

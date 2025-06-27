@@ -19,14 +19,27 @@ supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 def save_session_to_db(session_id):
     session = sessions.get(session_id)
     if not session:
-        return
-    supabase_client.table("sessions").upsert({
-        "id": session_id,
-        "current_question_index": session["current_question_index"],
-        "recipient_context": session["recipient_context"],
-        "only_questions": session["only_questions"],
-        "question_stack": session["question_stack"],
-    }).execute()
+        print(f"⚠️ No session found for session_id: {session_id}")
+        return {"status": "error", "message": "Session not found."}
+
+    try:
+        response = supabase_client.table("sessions").upsert(
+            {
+                "id": session_id,
+                "current_question_index": session["current_question_index"],
+                "recipient_context": session["recipient_context"],
+                "only_questions": session["only_questions"],
+                "question_stack": session["question_stack"],
+            },
+            on_conflict="id"  # 👈 ensures update if the session ID already exists
+        ).execute()
+
+        print(f"✅ Session {session_id} saved to DB.")
+        return {"status": "ok", "message": "Session saved to DB.", "data": response.data}
+
+    except Exception as e:
+        print(f"❌ Failed to save session {session_id} to DB:", str(e))
+        return {"status": "error", "message": str(e)}
 
 def save_all_sessions_to_db():
     for session_id in sessions.keys():
@@ -43,20 +56,55 @@ def load_all_sessions_from_db():
                 "question_stack": row.get("question_stack", [])
             }
 
-# --- Session persistence timing utility ---
-import time
-from typing import Dict
+def load_session_from_db(session_id):
+    try:
+        response = supabase_client.table("sessions").select("*").eq("id", session_id).single().execute()
 
-# Utility to track last saved time
-session_last_saved: Dict[str, float] = {}
+        data = response.data
+        if data:
+            print(f"✅ Session {session_id} loaded from DB.")
+            # Restore it into local in-memory sessions
+            sessions[session_id] = {
+                "current_question_index": data["current_question_index"],
+                "recipient_context": data["recipient_context"],
+                "only_questions": data["only_questions"],
+                "question_stack": data["question_stack"]
+            }
+            return {"status": "ok", "session": sessions[session_id]}
+        else:
+            print(f"⚠️ Session {session_id} not found in DB.")
+            return {"status": "error", "message": "Session not found."}
 
-def maybe_save_session_to_db(session_id):
-    """Save session if more than X seconds passed since last save"""
-    now = time.time()
-    last_saved = session_last_saved.get(session_id, 0)
-    if now - last_saved > 60:  # e.g., save if more than 60 seconds passed
-        save_session_to_db(session_id)
-        session_last_saved[session_id] = now
+    except Exception as e:
+        print(f"❌ Error loading session {session_id} from DB:", str(e))
+        return {"status": "error", "message": str(e)}
+
+# # --- Session persistence timing utility ---
+# import time
+# from typing import Dict
+
+# # Utility to track last saved time
+# session_last_saved: Dict[str, float] = {}
+
+# def maybe_save_session_to_db(session_id):
+#     """Save session if more than X seconds passed since last save"""
+#     now = time.time()
+#     last_saved = session_last_saved.get(session_id, 0)
+#     if now - last_saved > 60:  # e.g., save if more than 60 seconds passed
+#         save_session_to_db(session_id)
+#         session_last_saved[session_id] = now
+
+
+
+
+def delete_session(session_id):
+    if session_id in sessions:
+        del sessions[session_id]
+        print(f"🗑️ Session {session_id} deleted from memory.")
+        return {"status": "ok", "message": f"Session {session_id} deleted."}
+    else:
+        print(f"⚠️ Session {session_id} not found.")
+        return {"status": "error", "message": f"Session {session_id} not found."}
 
 #Environment variables
 load_dotenv(override=True)
@@ -367,7 +415,6 @@ def get_ans(session_id, ans):
     print("🧾 Current question:", session['only_questions'][session['current_question_index']])
     key = submit_answer(session_id, session["only_questions"][session["current_question_index"]], ans)
     session["current_question_index"] += 1
-    maybe_save_session_to_db(session_id)
     print("this is the key ", key)
     return key
 
@@ -395,7 +442,6 @@ def submit_answer(session_id, question, answer):
     key = safe_q.replace(' ', '_')
     session["recipient_context"][key] = answer
     session["question_stack"].append((key, question, answer))
-    maybe_save_session_to_db(session_id)
     return key
 
 def go_back(session_id):
@@ -409,7 +455,6 @@ def go_back(session_id):
     key, _, _ = session["question_stack"].pop()
     session["recipient_context"].pop(key, None)
     session["only_questions"].pop()
-    maybe_save_session_to_db(session_id)
     return
 
 import random
@@ -441,7 +486,6 @@ def get_question(session_id):
         print(f"🧠 New question generated: {que}")
         session["only_questions"].append(que)
         print(f"✅ Question added to session {session_id}")
-        maybe_save_session_to_db(session_id)
     else:
         que = session["only_questions"][session["current_question_index"]]
         print(f"🔁 Reusing existing question: {que}")
@@ -456,6 +500,8 @@ def format_final_prompt(session_id):
     if not session:
         print(f"⚠️ No session found for: {session_id}")
         return "No specific details provided."
+    save_session_to_db(session_id)
+    delete_session(session_id)
         
     values = []
 
@@ -470,6 +516,7 @@ def format_final_prompt(session_id):
 
 
 def follow_up_chat(session_id,ans, k=12):
+    load_session_from_db(session_id)
     session = sessions.get(session_id)
     if not session:
         print(f"⚠️ No session found for: {session_id}")
@@ -502,7 +549,6 @@ def reset_session(session_id: str):
         "only_questions": [],
         "current_question_index": 0
     }
-    maybe_save_session_to_db(session_id)
     return {"status": "ok", "message": f"Session {session_id} has been reset."}
 
 
@@ -563,9 +609,26 @@ def run_this():
     while(True):
         ans = input("ask followup questions to get more chunks \n")
         print(follow_up_chat(session_id,ans,k = 12))
+        
+def test():
+    import uuid
+    session_id = str(uuid.uuid4())
+    i = 2
+    while(i > 0):
+      question = get_question(session_id)
+      get_ans(session_id,input(question))
+      print("\n\n")
+      i -= 1
+    prompt = format_final_prompt(session_id)
+    chunks = get_top_chunks(prompt,12)
+    print(chunks)
+    print("\n\n\n")
+    while(True):
+       print(follow_up_chat(session_id, input("ask a follow up question \n"),12))
 
 if __name__ == "__main__":
-    run_this()
+    # run_this()
+    test()
 # ---------------------------------------
 # Delete specific session from Supabase by session ID
 # ---------------------------------------
