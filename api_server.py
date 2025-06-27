@@ -6,6 +6,12 @@ from main import clear_all_sessions, get_all_sessions,follow_up_chat
 
 from uuid import uuid4
 
+from datetime import datetime, timedelta
+import asyncio
+
+# Store creation times separately
+session_creation_times = {}
+
 # Session-aware storage
 # sessions: Dict[str, Dict[str, Any]] = {}
 session_counter = 1
@@ -54,6 +60,7 @@ async def init():
         # }
         import uuid
         session_id = str(uuid.uuid4())
+        session_creation_times[session_id] = datetime.utcnow()  # Track creation time
         question = get_question(session_id)
         return {"question": question, "session_id": session_id}
     except Exception as e:
@@ -86,6 +93,8 @@ async def next_question(session_id: str):
         if session_id not in sessions:
             return {"error": f"Session {session_id} not found"}
         question = get_question(session_id)
+        from datetime import datetime
+        sessions[session_id]["created_at"] = datetime.utcnow()
         return {"question": question}
     except Exception as e:
         return {"error": str(e)}
@@ -215,3 +224,18 @@ async def followup(session_id: str, ans: str = "", k: int = 12):
 @app.on_event("startup")
 async def startup_event():
     print("✅ FastAPI app is live and running!")
+
+    async def cleanup_expired_sessions():
+        while True:
+            await asyncio.sleep(1800)  # Wait for 30 minutes
+            now = datetime.utcnow()
+            expired_sessions = [
+                sid for sid, created in session_creation_times.items()
+                if now - created > timedelta(minutes=15)
+            ]
+            for sid in expired_sessions:
+                print(f"🧹 Auto-deleting expired session {sid}")
+                sessions.pop(sid, None)
+                session_creation_times.pop(sid, None)
+
+    asyncio.create_task(cleanup_expired_sessions())
