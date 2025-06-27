@@ -457,6 +457,18 @@ def go_back(session_id):
     session["only_questions"].pop()
     return
 
+# ---------------------------------------------------------------------
+# Reset All Functionality
+# ---------------------------------------------------------------------
+def reset_all():
+    """Reset all recipient context, question stack, and question index to start fresh."""
+    global recipient_context, question_stack, only_questions, current_question_index
+    recipient_context.clear()
+    question_stack.clear()
+    only_questions.clear()
+    current_question_index = 0
+    print("🔄 All previous data cleared. Starting fresh!")
+
 import random
 
 
