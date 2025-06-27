@@ -203,8 +203,7 @@ async def followup(session_id: str, ans: str = "", k: int = 12):
     """
     Return suggestions using get_top_chunks().
     """
-    if session_id not in sessions:
-            return {"error": f"session {session_id} not found"}
+    
     try:
         if ans:
             chunks = follow_up_chat(session_id,ans,k = 12)
