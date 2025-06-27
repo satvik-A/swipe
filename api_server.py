@@ -26,7 +26,8 @@ app.add_middleware(
     # You can specify specific origins if needed
     allow_origins=[
         "http://localhost:8080",  # local development
-        "https://slash-rag-agent.onrender.com"  # replace with actual deployed frontend URL
+        "https://slash-rag-agent.onrender.com"
+        "https://slash-experiences.netlify.app"# replace with actual deployed frontend URL
     ],
     allow_credentials=True,
     allow_methods=["*"],
