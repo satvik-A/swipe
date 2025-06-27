@@ -1,7 +1,20 @@
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Any, Dict
-from main import get_question, get_ans, get_top_chunks, recipient_context, question_stack, go_back, reset_all
+from main import get_question, get_ans, get_top_chunks, go_back, reset_session, sessions
+from main import clear_all_sessions, get_all_sessions,follow_up_chat
+
+from uuid import uuid4
+
+from datetime import datetime, timedelta
+import asyncio
+
+# Store creation times separately
+session_creation_times = {}
+
+# Session-aware storage
+# sessions: Dict[str, Dict[str, Any]] = {}
+session_counter = 1
 
 app = FastAPI()
 
@@ -13,8 +26,8 @@ app.add_middleware(
     # You can specify specific origins if needed
     allow_origins=[
         "http://localhost:8080",  # local development
-        "https://slash-rag-agent.onrender.com",  # deployed backend
-        "https://slash-experiences.netlify.app",  # deployed frontend
+        "https://slash-rag-agent.onrender.com"
+        "https://slash-experiences.netlify.app"# replace with actual deployed frontend URL
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -23,6 +36,7 @@ app.add_middleware(
 
 # Models for request bodies
 class SubmitRequest(BaseModel):
+    session_id: str
     ans: str
 
 class SuggestionRequest(BaseModel):
@@ -36,8 +50,20 @@ async def init():
     Return the first Groq-generated question.
     """
     try:
-        question = get_question()
-        return {"question": question}
+        # global session_counter
+        # session_id = str(session_counter)
+        # session_counter += 1
+        # sessions[session_id] = {
+        #     "recipient_context": {},
+        #     "question_stack": [],
+        #     "only_questions": [],
+        #     "current_question_index": 0
+        # }
+        import uuid
+        session_id = str(uuid.uuid4())
+        session_creation_times[session_id] = datetime.utcnow()  # Track creation time
+        question = get_question(session_id)
+        return {"question": question, "session_id": session_id}
     except Exception as e:
         return {"error": str(e)}
 
@@ -45,27 +71,38 @@ async def init():
 @app.post("/submit")
 async def submit(req: SubmitRequest):
     try:
-        key = get_ans(req.ans)
+        print("🔍 /submit received ans:", req.ans)
+        session_data = sessions.get(req.session_id)
+        print(f"📦 Current session data for ID {req.session_id}:", session_data)
+        if session_data is None:
+            raise ValueError(f"Session {req.session_id} not found. Available sessions: {list(sessions.keys())}")
+        key = get_ans(req.session_id, req.ans)
         return {"status": "ok", "key": key}
     except Exception as e:
-        print("❌ Error in /submit:", str(e))  # <--- add this line
+        import traceback
+        print("❌ Error in /submit:", str(e))
+        traceback.print_exc()
         return {"status": "error", "message": str(e)}
 
 
 @app.get("/next")
-async def next_question():
+async def next_question(session_id: str):
     """
     Return the next question.
     """
     try:
-        question = get_question()
+        if session_id not in sessions:
+            return {"error": f"Session {session_id} not found"}
+        question = get_question(session_id)
+        from datetime import datetime
+        sessions[session_id]["created_at"] = datetime.utcnow()
         return {"question": question}
     except Exception as e:
         return {"error": str(e)}
 
 
 @app.get("/suggestion")
-async def suggestion(query: str = "", k: int = 5):
+async def suggestion(session_id: str, query: str = "", k: int = 12):
     """
     Return suggestions using get_top_chunks().
     """
@@ -75,26 +112,32 @@ async def suggestion(query: str = "", k: int = 5):
         else:
             # Try to use the current context as a query if query is not provided
             from main import format_final_prompt
-            prompt = format_final_prompt()
+            prompt = format_final_prompt(session_id)
             chunks = get_top_chunks(prompt, k=k)
+        # Clean up session after suggestions are provided
+        # if session_id in sessions:
+        #     sessions.pop(session_id, None)
         return {"suggestions": chunks}
     except Exception as e:
         return {"error": str(e)}
 
 
 @app.get("/context")
-async def context():
+async def context(session_id: str):
     """
     Return recipient_context and question_stack.
     """
     try:
+        if session_id not in sessions:
+            return {"error": "Session not found"}
+        data = sessions.get(session_id, {})
         # Convert question_stack (list of tuples) to a serializable form
         stack_serializable = [
             {"key": key, "question": question, "answer": answer}
-            for (key, question, answer) in question_stack
+            for (key, question, answer) in data.get("question_stack", [])
         ]
         return {
-            "recipient_context": recipient_context,
+            "recipient_context": data.get("recipient_context", {}),
             "question_stack": stack_serializable
         }
     except Exception as e:
@@ -103,30 +146,96 @@ async def context():
 
 # Add endpoint for going back to previous question
 @app.get("/back")
-async def back():
+async def back(session_id: str):
     """
     Go back to the previous question.
     """
     try:
-        result = go_back()
+        if session_id not in sessions:
+            return {"error": f"Session {session_id} not found"}
+        result = go_back(session_id)
         return {"status": "ok", "result": result}
     except Exception as e:
         return {"error": str(e)}
 
 
+# Endpoint for resetting a session
 @app.get("/reset")
-async def reset():
+async def reset(session_id: str):
     """
-    Reset all stored context and start fresh.
+    Reset all progress and start fresh for a given session ID.
     """
     try:
-        reset_all()
-        return {"status": "ok", "message": "Session reset successfully."}
+        result = reset_session(session_id)
+        return result
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {"error": str(e)}
+
+
+
+# Clear all session data
+@app.get("/clear-all")
+async def clear_all_sessions():
+    """
+    Clear all stored session data.
+    """
+    try:
+        clear_all_sessions()
+        return {"status": "ok", "message": "All sessions have been cleared."}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# Endpoint to view all current sessions
+@app.get("/sessions")
+async def list_sessions():
+    """
+    List all active session IDs and their data.
+    """
+    try:
+        return {"sessions": get_all_sessions()}
+    except Exception as e:
+        return {"error": str(e)}
+    
+    
+@app.get("/followup")
+async def followup(session_id: str, ans: str = "", k: int = 12):
+    """
+    Return suggestions using get_top_chunks().
+    """
+    
+    try:
+        if ans:
+            chunks = follow_up_chat(session_id,ans,k = 12)
+        else:
+            # Try to use the current context as a query if query is not provided
+            from main import format_final_prompt
+            prompt = format_final_prompt(session_id)
+            chunks = get_top_chunks(prompt, k=k)
+        # Clean up session after suggestions are provided
+        # if session_id in sessions:
+        #     sessions.pop(session_id, None)
+        return {"suggestions": chunks}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # FastAPI startup event logger
 @app.on_event("startup")
 async def startup_event():
     print("✅ FastAPI app is live and running!")
+
+    async def cleanup_expired_sessions():
+        while True:
+            await asyncio.sleep(1800)  # Wait for 30 minutes
+            now = datetime.utcnow()
+            expired_sessions = [
+                sid for sid, created in session_creation_times.items()
+                if now - created > timedelta(minutes=15)
+            ]
+            for sid in expired_sessions:
+                print(f"🧹 Auto-deleting expired session {sid}")
+                sessions.pop(sid, None)
+                session_creation_times.pop(sid, None)
+
+    asyncio.create_task(cleanup_expired_sessions())
