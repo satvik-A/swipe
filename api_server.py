@@ -26,8 +26,8 @@ app.add_middleware(
     # You can specify specific origins if needed
     allow_origins=[
         "http://localhost:8080",  # local development
-        "https://slash-rag-agent.onrender.com"
-        "https://slash-experiences.netlify.app"# replace with actual deployed frontend URL
+        "https://slash-rag-agent.onrender.com",
+        "https://slash-experiences.netlify.app",  # fixed: added missing comma
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -175,7 +175,7 @@ async def reset(session_id: str):
 
 # Clear all session data
 @app.get("/clear-all")
-async def clear_all_sessions():
+async def clear_sessions_endpoint():
     """
     Clear all stored session data.
     """
@@ -239,3 +239,14 @@ async def startup_event():
                 session_creation_times.pop(sid, None)
 
     asyncio.create_task(cleanup_expired_sessions())
+# Add validation exception handler for clear error messages on input validation issues
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi import status
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": exc.errors(), "body": exc.body},
+    )
