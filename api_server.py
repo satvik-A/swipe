@@ -28,6 +28,7 @@ app.add_middleware(
         "http://localhost:8080",  # local development
         "https://slash-rag-agent.onrender.com",
         "https://slash-experiences.netlify.app",  # fixed: added missing comma
+        "http://localhost:5173", 
     ],
     allow_credentials=True,
     allow_methods=["*"],
