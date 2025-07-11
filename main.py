@@ -57,10 +57,20 @@ def load_all_sessions_from_db():
             }
 
 def load_session_from_db(session_id):
+    """Load a session from Supabase by its ID.
+    
+    Args:
+        session_id: The unique identifier for the session
+        
+    Returns:
+        Dict with status and session data or error message
+    """
     try:
-        response = supabase_client.table("sessions").select("*").eq("id", session_id).single().execute()
-
-        data = response.data
+        response = supabase_client.table("sessions").select("*").eq("id", session_id).limit(1).execute()
+        if len(response.data) == 0:
+            print("⚠️ Session not found.")
+        print("📦 Raw Supabase response:", response)
+        data = response.data[0]
         if data:
             print(f"✅ Session {session_id} loaded from DB.")
             # Restore it into local in-memory sessions
@@ -76,7 +86,9 @@ def load_session_from_db(session_id):
             return {"status": "error", "message": "Session not found."}
 
     except Exception as e:
-        print(f"❌ Error loading session {session_id} from DB:", str(e))
+        import traceback
+        print(f"❌ Error loading session {session_id} from DB: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
         return {"status": "error", "message": str(e)}
 
 # # --- Session persistence timing utility ---
@@ -527,21 +539,24 @@ def format_final_prompt(session_id):
 
 
 
-def follow_up_chat(session_id,ans, k=12):
-    load_session_from_db(session_id)
-    session = sessions.get(session_id)
-    if not session:
+def follow_up_chat(session_id, ans, k=12):
+    print(repr(session_id))  # shows hidden characters like \n or spaces
+    response = load_session_from_db(session_id)
+    
+    if not response or response.get("status") != "ok":
         print(f"⚠️ No session found for: {session_id}")
         return
-    # user_q = input("> ")
-    # safe_q = re.sub(r'[^\w\s]', '', question).strip().lower()
-    # key = safe_q.replace(' ', '_')
+
+    session = response["session"]
+
     key = str(uuid.uuid4())
     session["recipient_context"][key] = ans
-    # session["question_stack"].append((key, question, answer))
+
     prompt = format_final_prompt(session_id)
-    print("final prompt of follow up. \n " + prompt)
-    return get_top_chunks(prompt,k = 12)
+    print("final prompt of follow up. \n" + prompt)
+
+    cleanup_session(session_id)
+    return get_top_chunks(prompt, k=12)
 
 
 
@@ -637,10 +652,17 @@ def test():
     print("\n\n\n")
     while(True):
        print(follow_up_chat(session_id, input("ask a follow up question \n"),12))
+def follow_up_test():
+    session_id_1 = input(id)
+    ans = input("ans11")
+    chunks = follow_up_chat(session_id_1,ans,k = 12)
+    print(chunks)
+    return
 
 if __name__ == "__main__":
     # run_this()
-    test()
+    # test()
+    follow_up_test()
 # ---------------------------------------
 # Delete specific session from Supabase by session ID
 # ---------------------------------------
