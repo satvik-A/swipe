@@ -164,6 +164,13 @@ def get_initial_experiences(user_id: str):
                         print(f"DEBUG: Processing result with ID: {exp_id}")
                         if exp_id and exp_id not in all_swiped and len(recommended_ids) < 7:
                             recommended_ids.append(exp_id)
+                        if len(recommended_ids) < 7:
+                            all_exp = supabase.table("experiences").select("*").execute()
+                            for exp in all_exp.data:
+                                if exp["id"] not in recommended_ids and exp["id"] not in all_swiped:
+                                    recommended_ids.append(exp["id"])
+                                    if len(recommended_ids) >= 7:
+                                        break
                     
                     print(f"DEBUG: Recommended IDs after filtering: {recommended_ids}")
                     
@@ -200,9 +207,21 @@ def get_initial_experiences(user_id: str):
     
 
     # Get 7 random experiences
-    print(f"DEBUG: Fetching 7 random experiences for new user {user_id}")
-    experiences = supabase.table("experiences").select("*").limit(7).execute().data
-    print(f"DEBUG: Fetched {len(experiences)} experiences")
+    selected_ids = ["0e99f7c2-e443-4e7a-8fb9-da84c1c2ac5b", # treasure hunt
+                    "26b2b99a-e234-4a5a-88db-fe640671e770", # tasting menu
+                    "08a038e9-f72f-473c-ab17-257c577813dc", # poetry
+                    "1f4bda9e-e1a6-4da3-89ee-ba0f49556604", # paintball
+                    "37c2968a-14d6-4f1c-9fc7-5f9d4e4df9c9", # zero gravity
+                    "420b1069-2198-4b91-963d-ffc49dacdfbb", # dance fitness workshop
+                    "ca19d186-8bf5-4620-b6e0-2bea93bcb606"] # adventure parks
+
+    # Fetch experiences with those IDs
+    experiences = []
+    for id in selected_ids:
+        result = supabase.table("experiences").select("*").eq("id", id).limit(1).execute().data
+        if result:
+            experiences.append(result[0])
+
     return {"experiences": experiences}
 
 @app.post("/recommendation")
@@ -356,6 +375,13 @@ async def get_recommendations(request: SwipeRequest):
                         print(f"DEBUG: Processing result with ID: {exp_id}")
                         if exp_id and exp_id not in all_swiped and len(recommended_ids) < 5:
                             recommended_ids.append(exp_id)
+                        if len(recommended_ids) < 5:
+                            all_exp = supabase.table("experiences").select("*").execute()
+                            for exp in all_exp.data:
+                                if exp["id"] not in recommended_ids and exp["id"] not in all_swiped:
+                                    recommended_ids.append(exp["id"])
+                                    if len(recommended_ids) >= 5:
+                                        break
                     
                     print(f"DEBUG: Recommended IDs after filtering: {recommended_ids}")
                     
